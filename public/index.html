@@ -69,6 +69,20 @@ button:disabled{cursor:not-allowed}
 
 /* ================= BOARD ================= */
 .game{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:4px}
+
+.disconnect-banner{
+  position:fixed;top:0;left:50%;transform:translateX(-50%);
+  background:linear-gradient(180deg,rgba(251,191,36,.96),rgba(217,119,6,.96));
+  color:#1a1a26;font-weight:900;font-size:12.5px;
+  padding:9px 18px;border-radius:0 0 14px 14px;
+  z-index:450;box-shadow:0 8px 24px rgba(251,191,36,.5);
+  animation:fi .3s;text-align:center;
+  max-width:92vw;letter-spacing:.01em;
+  border:1px solid rgba(0,0,0,.2);border-top:none;
+  line-height:1.3;
+}
+.disconnect-banner.hidden{display:none}
+
 .board{display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(11,1fr);
   width:min(540px,100vw - 8px,100vh - 8px);height:min(540px,100vw - 8px,100vh - 8px);
   background:radial-gradient(ellipse at 50% 50%,rgba(139,92,246,.08) 0%,transparent 60%),#0d0d17;
@@ -144,7 +158,6 @@ button:disabled{cursor:not-allowed}
   color:rgba(167,139,250,.04);letter-spacing:.35em;pointer-events:none;white-space:nowrap;
   font-family:Georgia,serif;font-style:italic}
 
-/* ==== TIMER ==== */
 .timer-bar{
   display:flex;align-items:center;justify-content:center;gap:1cqmin;
   background:rgba(139,92,246,.15);
@@ -173,6 +186,10 @@ button:disabled{cursor:not-allowed}
   box-shadow:0 0 18px rgba(167,139,250,.3)}
 .pcard.active::before{width:.9cqmin}
 .pcard.dead{opacity:.3;filter:grayscale(.9)}
+.pcard.disconnected{opacity:.55;filter:grayscale(.5)}
+.pcard.disconnected::after{
+  content:'📡';position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  font-size:2cqmin}
 .pcard .pd{width:2.3cqmin;height:2.3cqmin;border-radius:50%;flex-shrink:0;
   border:1.5px solid rgba(255,255,255,.8);
   display:flex;align-items:center;justify-content:center;
@@ -292,7 +309,6 @@ button:disabled{cursor:not-allowed}
   margin:6px 0}
 .owner-chip .dot{width:8px;height:8px;border-radius:50%}
 
-/* ==== STATS MODAL ==== */
 .stat-player{padding:12px 14px;background:rgba(255,255,255,.04);border-radius:14px;
   margin-top:10px;border:1px solid rgba(255,255,255,.08);text-align:left}
 .stat-player.winner{border-color:rgba(251,191,36,.6);
@@ -363,6 +379,9 @@ button:disabled{cursor:not-allowed}
 </div>
 
 <div class="game" id="game" style="display:none">
+  <div class="disconnect-banner hidden" id="disconnectBanner">
+    ⏳ <b>მოწინააღმდეგე დროებით გავიდა</b> — ველოდებით დაბრუნებას...
+  </div>
   <div class="board" id="board"></div>
 </div>
 
@@ -382,8 +401,12 @@ let selectedColor = '#ef4444';
 let isRemoteUpdate = false;
 let animating = false;
 let statsShown = false;
+let opponentDisconnected = false;
+let skipNextSync = false;
+let rejoinTimeoutHandle = null;
 
 const GAME_DURATION = 20 * 60;
+const SESSION_KEY = 'monopoly_session';
 
 /* ================= AUDIO EFFECTS ================= */
 class SoundEffects {
@@ -617,6 +640,8 @@ function newState(players){
 /* ================= SOCKET LISTENERS ================= */
 $('startBtn').addEventListener('click', ()=>{
   sfx.init();
+  // თუ ძველი სესია იყო — წავშალოთ
+  localStorage.removeItem(SESSION_KEY);
   const username = $('usernameInput').value.trim() || 'მოთამაშე';
   roomId = $('roomIdInput').value.trim() || 'room1';
 
@@ -626,8 +651,14 @@ $('startBtn').addEventListener('click', ()=>{
   $('lobbyStatus').style.display = 'block';
 });
 
+socket.on('welcome', ({ token, roomId: rid }) => {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ roomId: rid, token }));
+  } catch(e) {}
+});
+
 socket.on('update_lobby', (players) => {
-  // სურვილისამებრ — lobby-ში მოთამაშეების ჩვენება
+  // სურვილისამებრ
 });
 
 socket.on('game_started', (data) => {
@@ -636,6 +667,9 @@ socket.on('game_started', (data) => {
 
   myPlayerIndex = data.myIndex ?? 0;
   statsShown = false;
+  opponentDisconnected = false;
+  hideDisconnectBanner();
+
   const playersList = data.players || [
     { username: $('usernameInput').value || 'მოთამაშე 1', color: selectedColor },
     { username: 'მოთამაშე 2', color: '#3b82f6' }
@@ -649,7 +683,81 @@ socket.on('game_started', (data) => {
   addLog(`თამაში დაიწყო! ${S.players[S.current].name}-ის სვლაა.`);
 });
 
-// STATE SYNC - მთავარი მექანიზმი
+/* ============ REJOIN ============ */
+function showStartScreen(){
+  $('startScreen').style.display = 'flex';
+  $('game').style.display = 'none';
+  $('startBtn').disabled = false;
+  $('lobbyStatus').style.display = 'none';
+  hideDisconnectBanner();
+}
+
+socket.on('rejoin_success', (data) => {
+  if (rejoinTimeoutHandle) { clearTimeout(rejoinTimeoutHandle); rejoinTimeoutHandle = null; }
+  myPlayerIndex = data.myIndex;
+  roomId = data.roomId;
+  opponentDisconnected = false;
+  statsShown = false;
+  hideDisconnectBanner();
+
+  if (data.gameStarted) {
+    if (data.state) {
+      S = data.state;
+      S.timeLeft = data.timeLeft ?? GAME_DURATION;
+    } else {
+      S = newState(data.players);
+      S.timeLeft = data.timeLeft ?? GAME_DURATION;
+      S.current = data.currentTurnIndex ?? 0;
+    }
+    $('startScreen').style.display = 'none';
+    $('game').style.display = 'flex';
+    buildBoard();
+    skipNextSync = true;
+    renderAll();
+    toast('✅ დაბრუნდი თამაშში!');
+  } else {
+    // ჯერ კიდევ ლობიში ვართ
+    $('lobbyStatus').textContent = '⏳ ველოდებით მეორე მოთამაშეს...';
+    $('lobbyStatus').style.display = 'block';
+    $('startBtn').disabled = true;
+    toast('✅ ლობიში ხარ');
+  }
+});
+
+socket.on('rejoin_failed', () => {
+  if (rejoinTimeoutHandle) { clearTimeout(rejoinTimeoutHandle); rejoinTimeoutHandle = null; }
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+  showStartScreen();
+  toast('სესია ვერ აღდგა');
+});
+
+/* ============ OPPONENT DISCONNECT / RECONNECT ============ */
+function showDisconnectBanner(){
+  const b = $('disconnectBanner');
+  if (b) b.classList.remove('hidden');
+}
+function hideDisconnectBanner(){
+  const b = $('disconnectBanner');
+  if (b) b.classList.add('hidden');
+}
+
+socket.on('opponent_disconnected', ({ username }) => {
+  if (!S) return;
+  opponentDisconnected = true;
+  showDisconnectBanner();
+  toast(`⚠️ ${username} დროებით გავიდა`);
+  renderAll();
+});
+
+socket.on('opponent_reconnected', ({ username }) => {
+  if (!S) return;
+  opponentDisconnected = false;
+  hideDisconnectBanner();
+  toast(`✅ ${username} დაბრუნდა!`);
+  renderAll();
+});
+
+/* ============ STATE SYNC ============ */
 socket.on('game_sync', ({ state }) => {
   if(!state) return;
   const wasGameOver = S ? S.gameOver : false;
@@ -662,7 +770,6 @@ socket.on('game_sync', ({ state }) => {
   }
 });
 
-// კამათლის ანიმაციის სინქრონიზაცია
 socket.on('dice_roll', async ({ d1, d2 }) => {
   if(!S) return;
   await animateDice(d1, d2);
@@ -671,7 +778,6 @@ socket.on('dice_roll', async ({ d1, d2 }) => {
   renderDice();
 });
 
-// ტაიმერის სინქრონიზაცია
 socket.on('timer_tick', ({ timeLeft }) => {
   if(!S) return;
   S.timeLeft = timeLeft;
@@ -683,7 +789,6 @@ socket.on('time_up', () => {
   endGame('time_up');
 });
 
-// მოწინააღმდეგის გასვლა
 socket.on('game_over', ({ winner, reason }) => {
   if(!S) return;
   if(S.gameOver) return;
@@ -697,18 +802,41 @@ socket.on('game_over', ({ winner, reason }) => {
 });
 
 socket.on('player_left', () => {
-  toast('მოწინააღმდეგე გავიდა');
+  // ძველი event — ცარიელი
 });
 
 socket.on('error_message', (msg) => {
   toast(msg);
 });
 
-/* ================= SYNC EMITTER ================= */
+/* ============ SYNC EMITTER ============ */
 function emitSync(){
   if(!roomId || !S || isRemoteUpdate) return;
+  if (skipNextSync) { skipNextSync = false; return; }
   socket.emit('game_sync', { roomId, state: S });
 }
+
+/* ================= AUTO REJOIN ON PAGE LOAD ================= */
+(function autoRejoin(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch(e) {}
+  if (!saved || !saved.roomId || !saved.token) return;
+
+  $('startBtn').disabled = true;
+  $('lobbyStatus').textContent = '🔄 ვუკავშირდებით თამაშს...';
+  $('lobbyStatus').style.display = 'block';
+  $('startScreen').style.display = 'flex';
+
+  socket.emit('rejoin', { roomId: saved.roomId, token: saved.token });
+
+  rejoinTimeoutHandle = setTimeout(() => {
+    if (!S) {
+      try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+      showStartScreen();
+      toast('სესია ვერ აღდგა (timeout)');
+    }
+  }, 6000);
+})();
 
 /* ================= BOARD ================= */
 function buildBoard(){
@@ -1001,7 +1129,12 @@ function renderPlayers(){
   el.innerHTML = '';
   S.players.forEach((p,i)=>{
     const c = document.createElement('div');
-    c.className = 'pcard' + (i===S.current && !S.gameOver ? ' active' : '') + (p.dead ? ' dead' : '');
+    const isOpponent = i !== myPlayerIndex;
+    const isDisc = isOpponent && opponentDisconnected;
+    c.className = 'pcard' 
+      + (i===S.current && !S.gameOver ? ' active' : '') 
+      + (p.dead ? ' dead' : '')
+      + (isDisc ? ' disconnected' : '');
     c.style.setProperty('--pc', p.color);
     c.innerHTML = `
       <div class="pd" style="background:${p.color};box-shadow:0 0 10px ${p.color}aa">${p.letter || '?'}</div>
@@ -1091,7 +1224,16 @@ function renderTurn(){
   }
   const p = S.players[S.current];
   const isMyTurn = S.current === myPlayerIndex;
-  const hint = isMyTurn ? '👆 ხანგრძლივი დაჭერა უჯრაზე = ინფო' : '⏳ მოცდა...';
+  let hint;
+  if (opponentDisconnected && !isMyTurn) {
+    hint = '⚠️ მოწინააღმდეგე გავიდა — შეგიძლია გამოტოვო';
+  } else if (opponentDisconnected) {
+    hint = '⚠️ მოწინააღმდეგე გავიდა';
+  } else if (isMyTurn) {
+    hint = '👆 ხანგრძლივი დაჭერა უჯრაზე = ინფო';
+  } else {
+    hint = '⏳ მოცდა...';
+  }
   el.innerHTML = `სვლა: <b style="color:${p.color}">${p.name}</b><span class="hint">${hint}</span>`;
 }
 
@@ -1110,17 +1252,30 @@ function renderButtons(){
     roll.disabled = true; end.disabled = true; return;
   }
   const isMyTurn = (S.current === myPlayerIndex) && S.players[myPlayerIndex] && !S.players[myPlayerIndex].dead;
+
+  // Skip turn — opponent disconnected & not my turn
   if(!isMyTurn){
-    roll.disabled = true; end.disabled = true; return;
+    if (opponentDisconnected && !S.gameOver) {
+      roll.disabled = true;
+      end.disabled = false;
+      end.textContent = '⏭ სვლის გამოტოვება';
+    } else {
+      roll.disabled = true; end.disabled = true;
+      end.textContent = '▶ დასრულება';
+    }
+    return;
   }
+
   if(S.phase==='idle'){
     roll.disabled=false; end.disabled=true;
+    end.textContent = '▶ დასრულება';
     const p = S.players[S.current];
     if(p.inJail && p.jailCards>0) roll.textContent = '🎫 ბარათი';
     else if(p.inJail) roll.textContent = '🔓 ციხიდან';
-    else roll.textContent = '🎲 გagორება';
+    else roll.textContent = '🎲 გაგორება';
   } else if(S.phase==='can-end'){
     roll.disabled=true; end.disabled=false;
+    end.textContent = '▶ დასრულება';
   }
 }
 
@@ -1195,6 +1350,7 @@ function endGame(reason){
 function showStatsModal(reason){
   if (statsShown) return;
   statsShown = true;
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
 
   const stats = computeStats();
   stats.sort((a, b) => {
@@ -1205,8 +1361,8 @@ function showStatsModal(reason){
   const reasonText = {
     'time_up':   '⏱ დრო ამოიწურა — გამარჯვებული განისაზღვრა ქულებით',
     'bankrupt':  '💀 გაკოტრება',
-    'disconnect':'📡 მოწინააღმდეგე გავიდა',
-    'all_opponents_disconnected': '📡 მოწინააღმდეგე გავიდა',
+    'disconnect':'📡 მოწინააღმდეგე ვერ დაბრუნდა',
+    'all_opponents_disconnected': '📡 მოწინააღმდეგე ვერ დაბრუნდა',
   }[reason] || 'თამაში დასრულდა';
 
   let html = `<h2>🏆 თამაში დასრულდა!</h2>`;
@@ -1234,11 +1390,16 @@ function showStatsModal(reason){
     html += `</div>`;
   });
 
-  html += `<div class="actions"><button class="btn green" onclick="location.reload()">🔄 ახალი თამაში</button></div>`;
+  html += `<div class="actions"><button class="btn green" id="newGameBtn">🔄 ახალი თამაში</button></div>`;
 
   modalCard.className = 'mcard gameover';
   modalCard.innerHTML = html;
   modal.classList.remove('hidden');
+
+  $('newGameBtn').onclick = () => {
+    try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+    location.reload();
+  };
 }
 
 /* ============= GAME FLOW ============= */
@@ -1478,8 +1639,21 @@ async function playCard(p, kind){
 }
 
 function onEndTurn(){
-  if(!S || S.gameOver || S.phase!=='can-end')return;
-  if(S.current !== myPlayerIndex) return;
+  if(!S || S.gameOver) return;
+  const isMyTurn = S.current === myPlayerIndex;
+
+  // Case 1: ჩემი სვლაა — საჭიროა phase === 'can-end'
+  if (isMyTurn) {
+    if (S.phase !== 'can-end') return;
+  }
+  // Case 2: მოწინააღმდეგის სვლაა, მაგრამ გათიშულია — გამოტოვება დასაშვებია
+  else if (opponentDisconnected) {
+    // ნებისმიერ ფაზაზე დასაშვებია
+  }
+  else {
+    return;
+  }
+
   S.phase = 'idle';
   const p = S.players[S.current]; p.doubles = 0;
   let next = (S.current+1) % S.players.length; let guard = 0;

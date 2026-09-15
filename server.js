@@ -19,6 +19,32 @@ app.get('/', (req, res) => {
 
 const rooms = {};
 const PALETTE = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b'];
+const GAME_DURATION = 20 * 60; // 20 წუთი (წამებში)
+
+function startRoomTimer(roomId, room) {
+  if (room.timerHandle) clearInterval(room.timerHandle);
+  room.timeLeft = GAME_DURATION;
+  io.to(roomId).emit('timer_tick', { timeLeft: room.timeLeft });
+
+  room.timerHandle = setInterval(() => {
+    const r = rooms[roomId];
+    if (!r) { clearInterval(room.timerHandle); return; }
+    r.timeLeft--;
+    io.to(roomId).emit('timer_tick', { timeLeft: r.timeLeft });
+    if (r.timeLeft <= 0) {
+      clearInterval(r.timerHandle);
+      r.timerHandle = null;
+      io.to(roomId).emit('time_up', {});
+    }
+  }, 1000);
+}
+
+function stopRoomTimer(room) {
+  if (room && room.timerHandle) {
+    clearInterval(room.timerHandle);
+    room.timerHandle = null;
+  }
+}
 
 io.on('connection', (socket) => {
 
@@ -31,7 +57,9 @@ io.on('connection', (socket) => {
         players: [],
         gameStarted: false,
         currentTurnIndex: 0,
-        state: null
+        state: null,
+        timeLeft: GAME_DURATION,
+        timerHandle: null
       };
     }
 
@@ -69,9 +97,12 @@ io.on('connection', (socket) => {
             id: x.id, username: x.username, color: x.color
           })),
           myIndex: idx,
-          currentTurnIndex: room.currentTurnIndex
+          currentTurnIndex: room.currentTurnIndex,
+          timeLeft: GAME_DURATION
         });
       });
+
+      startRoomTimer(roomId, room);
     }
   });
 
@@ -99,17 +130,25 @@ io.on('connection', (socket) => {
           id: x.id, username: x.username, color: x.color
         })),
         myIndex: idx,
-        currentTurnIndex: room.currentTurnIndex
+        currentTurnIndex: room.currentTurnIndex,
+        timeLeft: GAME_DURATION
       });
     });
+
+    startRoomTimer(roomId, room);
   });
 
-  // 3. STATE RELAY - მთავარი სინქრონიზაცია
+  // 3. STATE RELAY - სინქრონიზაცია
   socket.on('game_sync', ({ roomId, state }) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted) return;
     room.state = state;
     socket.to(roomId).emit('game_sync', { state });
+
+    // თუ თამაში დასრულდა — გავაჩეროთ ტაიმერი
+    if (state && state.gameOver) {
+      stopRoomTimer(room);
+    }
   });
 
   // 4. კამათლის ანიმაციის სინქრონიზაცია
@@ -142,6 +181,7 @@ io.on('connection', (socket) => {
       if (!room.gameStarted) {
         room.players.splice(playerIndex, 1);
         if (room.players.length === 0) {
+          stopRoomTimer(room);
           delete rooms[roomId];
         } else {
           room.players[0].isHost = true;
@@ -154,6 +194,7 @@ io.on('connection', (socket) => {
 
       const isCurrentTurnPlayer = (room.currentTurnIndex === playerIndex);
       room.players.splice(playerIndex, 1);
+      stopRoomTimer(room);
 
       if (room.players.length === 0) {
         delete rooms[roomId];

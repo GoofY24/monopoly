@@ -5,11 +5,17 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS და Transport-ების კონფიგურაცია Render-ისთვის
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ['websocket', 'polling']
 });
 
-// 1. Static ფაილების მიწოდება Render-ისთვის (public საქაღალდე)
+// 1. Static ფაილების მიწოდება (public საქაღალდე)
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -20,8 +26,8 @@ app.get('/', (req, res) => {
 const rooms = {};
 
 io.on('connection', (socket) => {
-  
-  // 1. ოთახის შექმნა ან შეერთება ლობიში
+
+  // 1. ოთახის შექმნა ან შეერთება
   socket.on('join_lobby', ({ roomId, username }) => {
     socket.join(roomId);
 
@@ -33,42 +39,51 @@ io.on('connection', (socket) => {
       };
     }
 
-    // მოთამაშის დამატება ლობიში
-    const existingPlayer = rooms[roomId].players.find(p => p.id === socket.id);
+    const room = rooms[roomId];
+
+    // მოთამაშის დამატება
+    const existingPlayer = room.players.find(p => p.id === socket.id);
     if (!existingPlayer) {
-      rooms[roomId].players.push({
+      room.players.push({
         id: socket.id,
         username: username || `Player_${socket.id.substring(0, 4)}`,
-        isHost: rooms[roomId].players.length === 0 // პირველი შემოსული არის ჰოსტი
+        isHost: room.players.length === 0
       });
     }
 
-    // ლობის ყველა წევრს ვუგზავნით განახლებულ სიას
-    io.to(roomId).emit('update_lobby', rooms[roomId].players);
+    // ლობის განახლება ყველა წევრისთვის
+    io.to(roomId).emit('update_lobby', room.players);
+
+    // აუტო-სტარტი: თუ ოთახში ზუსტად 2 მოთამაშეა და თამაში ჯერ არ დაწყებულა
+    if (room.players.length === 2 && !room.gameStarted) {
+      room.gameStarted = true;
+      room.currentTurnIndex = 0;
+
+      io.to(roomId).emit('game_started', {
+        players: room.players,
+        currentTurn: room.players[room.currentTurnIndex].id
+      });
+    }
   });
 
-  // 2. თამაშის დაწყება (მხოლოდ ჰოსტს შეუძლია + მინიმუმ 2 მოთამაშე)
+  // 2. ხელით დაწყების ივენთი (თუ 2-ზე მეტი მოთამაშის მხარდაჭერა გსურთ მომავალში)
   socket.on('start_game', (roomId) => {
     const room = rooms[roomId];
-
     if (!room || room.gameStarted) return;
 
-    // ვამოწმებთ, არის თუ არა მოთხოვნის გამომგზავნი ჰოსტი
     const player = room.players.find(p => p.id === socket.id);
     if (!player || !player.isHost) {
       socket.emit('error_message', 'თამაშის დაწყება მხოლოდ ჰოსტს შეუძლია!');
       return;
     }
 
-    // ვამოწმებთ მოთამაშეთა რაოდენობას
     if (room.players.length < 2) {
       socket.emit('error_message', 'თამაშის დასაწყებად საჭიროა მინიმუმ 2 მოთამაშე!');
       return;
     }
 
-    // თუ შემოწმებები გაიარა, ვიწყებთ თამაშს
     room.gameStarted = true;
-    room.currentTurnIndex = 0; // იწყებს პირველი მოთამაშე
+    room.currentTurnIndex = 0;
 
     io.to(roomId).emit('game_started', {
       players: room.players,
@@ -81,7 +96,6 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted) return;
 
-    // ვამოწმებთ, ნამდვილად იმ მოთამაშემ გამოგზავნა თუ არა, ვისი სვლაც იყო
     if (socket.id === room.players[room.currentTurnIndex].id) {
       room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length;
 
@@ -107,7 +121,6 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           delete rooms[roomId];
         } else {
-          // თუ ჰოსტი გავიდოდა, ახალ ჰოსტად ვნიშნავთ პირველს
           room.players[0].isHost = true;
           io.to(roomId).emit('update_lobby', room.players);
         }
@@ -123,7 +136,7 @@ io.on('connection', (socket) => {
         continue;
       }
 
-      // თუ მხოლოდ 1 მოთამაშე დარჩა — თამაში სრულდება
+      // თუ 1 მოთამაშე დარჩა — თამაში სრულდება
       if (room.players.length === 1) {
         io.to(roomId).emit('game_over', {
           winner: room.players[0],
@@ -141,7 +154,6 @@ io.on('connection', (socket) => {
         room.currentTurnIndex = 0;
       }
 
-      // თუ იმის სვლა იყო ვინც გავარდა, რიგი გადადის შემდეგზე
       if (isCurrentTurnPlayer) {
         io.to(roomId).emit('turn_changed', {
           currentTurn: room.players[room.currentTurnIndex].id
@@ -157,7 +169,6 @@ io.on('connection', (socket) => {
 
 });
 
-// Render იყენებს process.env.PORT-ს
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

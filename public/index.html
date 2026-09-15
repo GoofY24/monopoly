@@ -48,7 +48,6 @@ button:disabled{cursor:not-allowed}
 .btn.red{background:linear-gradient(180deg,#ef4444,#dc2626)}
 .btn.gray{background:linear-gradient(180deg,#374151,#1f2937)}
 
-/* Color picker in lobby */
 .color-label{font-size:10px;color:#6b7280;letter-spacing:.3em;text-transform:uppercase;
   font-weight:700;text-align:center;margin-bottom:-4px}
 .color-picker{display:flex;gap:14px;justify-content:center;width:100%;max-width:340px;
@@ -62,7 +61,6 @@ button:disabled{cursor:not-allowed}
   box-shadow:0 0 24px var(--c),0 3px 12px rgba(0,0,0,.5)}
 .color-opt:active{transform:scale(.95)}
 
-/* Lobby status */
 .lobby-status{
   color:#a78bfa;font-size:14px;font-weight:700;text-align:center;
   background:rgba(167,139,250,.1);padding:12px;border-radius:12px;
@@ -138,7 +136,7 @@ button:disabled{cursor:not-allowed}
   background:radial-gradient(ellipse at 50% 0%,rgba(139,92,246,.18) 0%,transparent 55%),
     radial-gradient(ellipse at 50% 100%,rgba(236,72,153,.1) 0%,transparent 55%),
     linear-gradient(180deg,#0c0c16 0%,#08080f 100%);
-  border-radius:8px;display:flex;flex-direction:column;padding:2.5cqmin 3cqmin;gap:2cqmin;
+  border-radius:8px;display:flex;flex-direction:column;padding:2.2cqmin 3cqmin;gap:1.6cqmin;
   position:relative;overflow:hidden;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),inset 0 0 80px rgba(0,0,0,.7)}
 .center::before{content:'MONOPOLY';position:absolute;top:50%;left:50%;
@@ -146,8 +144,27 @@ button:disabled{cursor:not-allowed}
   color:rgba(167,139,250,.04);letter-spacing:.35em;pointer-events:none;white-space:nowrap;
   font-family:Georgia,serif;font-style:italic}
 
+/* ==== TIMER ==== */
+.timer-bar{
+  display:flex;align-items:center;justify-content:center;gap:1cqmin;
+  background:rgba(139,92,246,.15);
+  padding:1cqmin 2cqmin;border-radius:1.2cqmin;
+  font-size:2.4cqmin;font-weight:900;color:#c4b5fd;
+  border:1px solid rgba(167,139,250,.3);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.06em;
+  z-index:1;flex-shrink:0;
+  transition:all .4s;width:100%;
+}
+.timer-bar.warning{
+  background:rgba(239,68,68,.2);color:#fca5a5;
+  border-color:rgba(239,68,68,.55);
+  animation:pulseRed 1s ease-in-out infinite;
+}
+@keyframes pulseRed{0%,100%{opacity:1}50%{opacity:.55}}
+
 .players{display:grid;grid-template-columns:repeat(2,1fr);gap:1cqmin;z-index:1;flex-shrink:0}
-.pcard{display:flex;align-items:center;gap:1cqmin;padding:1.1cqmin 1.3cqmin;
+.pcard{display:flex;align-items:center;gap:1cqmin;padding:1cqmin 1.3cqmin;
   background:rgba(255,255,255,.04);border-radius:1.6cqmin;font-size:2.3cqmin;
   border:1px solid rgba(255,255,255,.07);transition:all .3s;min-width:0;position:relative;overflow:hidden}
 .pcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:.5cqmin;
@@ -193,7 +210,7 @@ button:disabled{cursor:not-allowed}
 .turn .hint{display:block;font-size:1.6cqmin;color:#4b5563;font-weight:500;margin-top:2px}
 
 .actions{display:flex;gap:1cqmin;z-index:1;width:100%;flex-shrink:0}
-.actions .btn{padding:1.9cqmin 1cqmin;font-size:2.3cqmin;border-radius:1.5cqmin;
+.actions .btn{padding:1.8cqmin 1cqmin;font-size:2.3cqmin;border-radius:1.5cqmin;
   font-weight:800;letter-spacing:-.01em}
 
 .log{font-size:1.85cqmin;color:#6b7280;text-align:center;height:4.4cqmin;
@@ -209,10 +226,10 @@ button:disabled{cursor:not-allowed}
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);animation:fi .2s}
 .modal.hidden{display:none}
 .mcard{background:linear-gradient(160deg,#1a1a26,#0d0d16);border-radius:22px;
-  padding:24px 20px;max-width:380px;width:100%;border:1px solid rgba(255,255,255,.09);
+  padding:24px 20px;max-width:400px;width:100%;border:1px solid rgba(255,255,255,.09);
   box-shadow:0 30px 80px rgba(0,0,0,.9),0 0 60px rgba(139,92,246,.2);
   text-align:center;animation:pop .3s cubic-bezier(.34,1.56,.64,1);
-  position:relative;overflow:hidden;max-height:85vh;overflow-y:auto}
+  position:relative;overflow:hidden;max-height:88vh;overflow-y:auto}
 .mcard::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
   background:linear-gradient(90deg,transparent,rgba(167,139,250,.6),transparent)}
 @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
@@ -231,6 +248,7 @@ button:disabled{cursor:not-allowed}
 .mcard.chance-card h2{color:#fbbf24}
 .mcard.chest-card{background:linear-gradient(160deg,#155e75,#0c4a6e)}
 .mcard.chest-card h2{color:#fbbf24}
+.mcard.gameover{background:linear-gradient(160deg,#1a1a26,#0d0d16)}
 .mcard.gameover h2{color:#fbbf24;font-size:24px}
 .mcard.upgrade-card{background:linear-gradient(160deg,#065f46,#064e3b)}
 .mcard.upgrade-card h2{color:#6ee7b7}
@@ -274,6 +292,24 @@ button:disabled{cursor:not-allowed}
   margin:6px 0}
 .owner-chip .dot{width:8px;height:8px;border-radius:50%}
 
+/* ==== STATS MODAL ==== */
+.stat-player{padding:12px 14px;background:rgba(255,255,255,.04);border-radius:14px;
+  margin-top:10px;border:1px solid rgba(255,255,255,.08);text-align:left}
+.stat-player.winner{border-color:rgba(251,191,36,.6);
+  background:linear-gradient(160deg,rgba(251,191,36,.15),rgba(251,191,36,.03));
+  box-shadow:0 0 20px rgba(251,191,36,.2)}
+.stat-name{font-size:15px;font-weight:900;color:#f0f0f8;margin-bottom:8px;
+  display:flex;align-items:center;gap:8px}
+.stat-name .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.stat-row{display:flex;justify-content:space-between;align-items:center;
+  padding:6px 10px;background:rgba(0,0,0,.3);border-radius:8px;margin-top:4px;
+  border:1px solid rgba(255,255,255,.05);font-size:12.5px}
+.stat-row .lbl{color:#9ca3af;font-weight:600}
+.stat-row .val{font-weight:900;color:#fbbf24;font-variant-numeric:tabular-nums}
+.stat-row.total{background:linear-gradient(90deg,rgba(251,191,36,.14),rgba(251,191,36,.03));
+  border-color:rgba(251,191,36,.35)}
+.stat-row.total .val{font-size:16px}
+
 .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);
   background:rgba(26,26,38,.98);border:1px solid rgba(167,139,250,.45);color:#f0f0f8;
   padding:11px 20px;border-radius:14px;font-size:13px;font-weight:700;z-index:600;
@@ -297,7 +333,7 @@ button:disabled{cursor:not-allowed}
 <div class="start" id="startScreen">
   <div style="text-align:center">
     <h1>მონოპოლია</h1>
-    <div class="sub">40 უჯრა · ონლაინ მულტიპლეერი</div>
+    <div class="sub">40 უჯრა · 20 წუთი · ონლაინ მულტიპლეერი</div>
   </div>
   
   <div class="setup">
@@ -345,6 +381,9 @@ let roomId = null;
 let selectedColor = '#ef4444';
 let isRemoteUpdate = false;
 let animating = false;
+let statsShown = false;
+
+const GAME_DURATION = 20 * 60;
 
 /* ================= AUDIO EFFECTS ================= */
 class SoundEffects {
@@ -395,6 +434,12 @@ class SoundEffects {
   bankrupt(){
     this.playTone(300, 'sawtooth', 0.2, 0.15);
     setTimeout(()=> this.playTone(200, 'sawtooth', 0.4, 0.15), 200);
+  }
+  victory(){
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+    notes.forEach((f, i) => {
+      setTimeout(()=> this.playTone(f, 'sine', 0.3, 0.12), i * 130);
+    });
   }
 }
 const sfx = new SoundEffects();
@@ -528,6 +573,13 @@ function toast(msg){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .35s';setTimeout(()=>t.remove(),350)},1400);
 }
 
+function formatTime(sec){
+  sec = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 /* ================= COLOR PICKER (LOBBY) ================= */
 document.querySelectorAll('.color-opt').forEach(el => {
   el.addEventListener('click', () => {
@@ -556,6 +608,7 @@ function newState(players){
     tiles: TILES.map(t=>({...t, owner:null, houses:0})),
     current: 0, dice:[1,1], logs:[], phase:'idle',
     lastRoll: 0, gameOver: false,
+    timeLeft: GAME_DURATION,
     chanceDeck: shuffle([...Array(CHANCE_CARDS.length).keys()]),
     chestDeck: shuffle([...Array(CHEST_CARDS.length).keys()]),
   };
@@ -574,7 +627,7 @@ $('startBtn').addEventListener('click', ()=>{
 });
 
 socket.on('update_lobby', (players) => {
-  // ლობიში დამატებითი ვიზუალი სურვილისამებრ შეიძლება დაემატოს
+  // სურვილისამებრ — lobby-ში მოთამაშეების ჩვენება
 });
 
 socket.on('game_started', (data) => {
@@ -582,12 +635,15 @@ socket.on('game_started', (data) => {
   $('game').style.display = 'flex';
 
   myPlayerIndex = data.myIndex ?? 0;
+  statsShown = false;
   const playersList = data.players || [
     { username: $('usernameInput').value || 'მოთამაშე 1', color: selectedColor },
     { username: 'მოთამაშე 2', color: '#3b82f6' }
   ];
 
   S = newState(playersList);
+  S.timeLeft = data.timeLeft ?? GAME_DURATION;
+
   buildBoard();
   renderAll();
   addLog(`თამაში დაიწყო! ${S.players[S.current].name}-ის სვლაა.`);
@@ -596,10 +652,14 @@ socket.on('game_started', (data) => {
 // STATE SYNC - მთავარი მექანიზმი
 socket.on('game_sync', ({ state }) => {
   if(!state) return;
+  const wasGameOver = S ? S.gameOver : false;
   isRemoteUpdate = true;
   S = state;
   renderAll();
   isRemoteUpdate = false;
+  if (state.gameOver && !wasGameOver && !statsShown) {
+    showStatsModal('bankrupt');
+  }
 });
 
 // კამათლის ანიმაციის სინქრონიზაცია
@@ -611,24 +671,33 @@ socket.on('dice_roll', async ({ d1, d2 }) => {
   renderDice();
 });
 
+// ტაიმერის სინქრონიზაცია
+socket.on('timer_tick', ({ timeLeft }) => {
+  if(!S) return;
+  S.timeLeft = timeLeft;
+  renderTimer();
+});
+
+socket.on('time_up', () => {
+  if(!S || S.gameOver) return;
+  endGame('time_up');
+});
+
+// მოწინააღმდეგის გასვლა
 socket.on('game_over', ({ winner, reason }) => {
   if(!S) return;
-  S.gameOver = true;
-  if(winner) {
+  if(S.gameOver) return;
+  if(winner){
     const idx = S.players.findIndex(p => p.name === winner.username);
     if(idx >= 0) {
       S.players.forEach((p, i) => { if(i !== idx) p.dead = true; });
     }
   }
-  renderAll();
-  setTimeout(()=>{
-    const w = S.players.find(p => !p.dead) || S.players[0];
-    showGameOver(w);
-  }, 400);
+  endGame(reason === 'all_opponents_disconnected' ? 'disconnect' : 'bankrupt');
 });
 
 socket.on('player_left', () => {
-  toast('მეორე მოთამაშე გავიდა');
+  toast('მოწინააღმდეგე გავიდა');
 });
 
 socket.on('error_message', (msg) => {
@@ -649,6 +718,7 @@ function buildBoard(){
   const center = document.createElement('div');
   center.className = 'center';
   center.innerHTML = `
+    <div class="timer-bar" id="timerBar">⏱ 20:00</div>
     <div class="players" id="players"></div>
     <div class="stage">
       <div class="dice-pair">
@@ -918,8 +988,16 @@ function renderDice(){
   setDiceFace($('dice2'), S.dice[1]);
 }
 
+function renderTimer(){
+  const el = $('timerBar');
+  if(!el || !S) return;
+  const t = S.timeLeft || 0;
+  el.textContent = `⏱ ${formatTime(t)}`;
+  el.classList.toggle('warning', t <= 60);
+}
+
 function renderPlayers(){
-  const el = $('players'); if(!el) return;
+  const el = $('players'); if(!el || !S) return;
   el.innerHTML = '';
   S.players.forEach((p,i)=>{
     const c = document.createElement('div');
@@ -935,6 +1013,7 @@ function renderPlayers(){
 }
 
 function renderTokens(){
+  if(!S) return;
   S.tiles.forEach((_,i)=>{ const c=$('tokens-'+i); if(c)c.innerHTML=''; });
   const groups = {};
   S.players.forEach(p=>{ if(p.dead)return; (groups[p.pos]=groups[p.pos]||[]).push(p); });
@@ -951,6 +1030,7 @@ function renderTokens(){
 }
 
 function renderOwners(){
+  if(!S) return;
   S.tiles.forEach((t,i)=>{
     const el = $('tile-'+i);
     const ring = $('ring-'+i);
@@ -983,6 +1063,7 @@ function renderOwners(){
 }
 
 function renderHouses(){
+  if(!S) return;
   S.tiles.forEach((t,i)=>{
     const band = $('band-'+i); if(!band) return;
     band.querySelectorAll('.house-svg').forEach(e=>e.remove());
@@ -1002,7 +1083,7 @@ function renderHouses(){
 }
 
 function renderTurn(){
-  const el = $('turn'); if(!el) return;
+  const el = $('turn'); if(!el || !S) return;
   if(S.gameOver){
     const alive = S.players.filter(p=>!p.dead);
     el.innerHTML = alive.length===1 ? `🏆 <b>${alive[0].name}</b> გაიმარჯვა!` : 'თამაში დასრულდა';
@@ -1015,7 +1096,7 @@ function renderTurn(){
 }
 
 function renderLog(){
-  const el = $('log'); if(!el) return;
+  const el = $('log'); if(!el || !S) return;
   el.innerHTML='';
   S.logs.slice(-3).forEach(m=>{
     const d = document.createElement('div'); d.textContent = m; el.appendChild(d);
@@ -1025,7 +1106,7 @@ function renderLog(){
 function renderButtons(){
   const roll = $('rollBtn'), end = $('endBtn');
   if(!roll || !end) return;
-  if(S.gameOver || animating || !S){
+  if(!S || S.gameOver || animating){
     roll.disabled = true; end.disabled = true; return;
   }
   const isMyTurn = (S.current === myPlayerIndex) && S.players[myPlayerIndex] && !S.players[myPlayerIndex].dead;
@@ -1037,7 +1118,7 @@ function renderButtons(){
     const p = S.players[S.current];
     if(p.inJail && p.jailCards>0) roll.textContent = '🎫 ბარათი';
     else if(p.inJail) roll.textContent = '🔓 ციხიდან';
-    else roll.textContent = '🎲 გაგორება';
+    else roll.textContent = '🎲 გagორება';
   } else if(S.phase==='can-end'){
     roll.disabled=true; end.disabled=false;
   }
@@ -1045,6 +1126,7 @@ function renderButtons(){
 
 function renderAll(){
   if(!S) return;
+  renderTimer();
   renderDice(); renderPlayers(); renderTokens(); renderOwners();
   renderHouses(); renderTurn(); renderLog(); renderButtons();
   emitSync();
@@ -1055,9 +1137,113 @@ function addLog(msg){
   S.logs.push(msg); if(S.logs.length>60)S.logs.shift(); renderLog();
 }
 
+/* ============= STATS & GAME OVER ============= */
+function computeStats(){
+  return S.players.map(p => {
+    let propCount = 0;
+    let propertyValue = 0;
+    let houseInvestment = 0;
+    let housesCount = 0;
+    let monopolies = 0;
+    const groupsOwned = new Set();
+
+    p.props.forEach(pos => {
+      const t = S.tiles[pos];
+      if(!t) return;
+      propCount++;
+      propertyValue += t.price || 0;
+      if (t.houses > 0) {
+        housesCount += t.houses;
+        houseInvestment += t.houses * (HOUSE_COST[t.group] || 0);
+      }
+      if (t.type === 'prop') groupsOwned.add(t.group);
+    });
+
+    groupsOwned.forEach(g => {
+      if (checkMonopoly(g, p.id)) monopolies++;
+    });
+
+    const totalWealth = p.money + propertyValue + houseInvestment;
+    const score = totalWealth + monopolies * 500;
+
+    return {
+      player: p,
+      name: p.name,
+      color: p.color,
+      money: p.money,
+      propCount,
+      propertyValue,
+      houseInvestment,
+      housesCount,
+      monopolies,
+      totalWealth,
+      score,
+      dead: !!p.dead
+    };
+  });
+}
+
+function endGame(reason){
+  if(!S) return;
+  if(S.gameOver && statsShown) return;
+  S.gameOver = true;
+  renderAll();
+  emitSync();
+  showStatsModal(reason);
+}
+
+function showStatsModal(reason){
+  if (statsShown) return;
+  statsShown = true;
+
+  const stats = computeStats();
+  stats.sort((a, b) => {
+    if (a.dead !== b.dead) return a.dead ? 1 : -1;
+    return b.score - a.score;
+  });
+
+  const reasonText = {
+    'time_up':   '⏱ დრო ამოიწურა — გამარჯვებული განისაზღვრა ქულებით',
+    'bankrupt':  '💀 გაკოტრება',
+    'disconnect':'📡 მოწინააღმდეგე გავიდა',
+    'all_opponents_disconnected': '📡 მოწინააღმდეგე გავიდა',
+  }[reason] || 'თამაში დასრულდა';
+
+  let html = `<h2>🏆 თამაში დასრულდა!</h2>`;
+  html += `<div class="cat">${reasonText}</div>`;
+
+  const winner = stats[0];
+  if (winner && !winner.dead) {
+    sfx.victory();
+  } else {
+    sfx.bankrupt();
+  }
+
+  stats.forEach((st, idx) => {
+    const isWinner = idx === 0 && !st.dead;
+    html += `<div class="stat-player${isWinner ? ' winner' : ''}">`;
+    html += `<div class="stat-name">
+      <span class="dot" style="background:${st.color};box-shadow:0 0 8px ${st.color}"></span>
+      ${isWinner ? '👑 ' : ''}${st.name}${st.dead ? ' 💀' : ''}
+    </div>`;
+    html += `<div class="stat-row"><span class="lbl">💰 ბალანსი</span><span class="val">${st.money}₾</span></div>`;
+    html += `<div class="stat-row"><span class="lbl">🏠 ქონება</span><span class="val">${st.propCount} (${st.propertyValue}₾)</span></div>`;
+    html += `<div class="stat-row"><span class="lbl">👑 მონოპოლია</span><span class="val">${st.monopolies}</span></div>`;
+    html += `<div class="stat-row"><span class="lbl">🏨 სახლები/სასტუმრო</span><span class="val">${st.housesCount}</span></div>`;
+    html += `<div class="stat-row total"><span class="lbl">📊 ჯამური ქულა</span><span class="val">${st.score > 0 ? st.score : 0}</span></div>`;
+    html += `</div>`;
+  });
+
+  html += `<div class="actions"><button class="btn green" onclick="location.reload()">🔄 ახალი თამაში</button></div>`;
+
+  modalCard.className = 'mcard gameover';
+  modalCard.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
 /* ============= GAME FLOW ============= */
 async function onRoll(){
-  if(animating||S.gameOver||S.phase!=='idle')return;
+  if(!S || animating || S.gameOver || S.phase!=='idle')return;
   if(S.current !== myPlayerIndex) return;
   sfx.roll();
   const p = S.players[S.current];
@@ -1071,7 +1257,6 @@ async function onRoll(){
   animating = true; renderButtons();
   const d1 = rand(1,6), d2 = rand(1,6);
 
-  // სხვა მოთამაშისთვის კამათლის ანიმაციის გაგზავნა
   socket.emit('dice_roll', { roomId, d1, d2 });
 
   await animateDice(d1,d2);
@@ -1147,8 +1332,8 @@ async function animateMove(p, steps){
       addLog(`${p.name} გაიარა დასაწყისი +${GO_BONUS}₾`); 
     }
     renderTokens(); renderPlayers();
-    emitSync(); // ყოველ ნაბიჯზე სინქრონიზაცია — მეორე მოთამაშე ხედავს მოძრაობას
-    await sleep(220); // შენელებული ანიმაცია
+    emitSync();
+    await sleep(220);
   }
 }
 
@@ -1293,7 +1478,7 @@ async function playCard(p, kind){
 }
 
 function onEndTurn(){
-  if(S.gameOver||S.phase!=='can-end')return;
+  if(!S || S.gameOver || S.phase!=='can-end')return;
   if(S.current !== myPlayerIndex) return;
   S.phase = 'idle';
   const p = S.players[S.current]; p.doubles = 0;
@@ -1328,9 +1513,7 @@ function checkBankrupt(){
     emitSync();
     const alive = S.players.filter(p=>!p.dead);
     if(alive.length <= 1){
-      S.gameOver = true; renderAll();
-      emitSync();
-      setTimeout(()=>showGameOver(alive[0]), 500);
+      endGame('bankrupt');
     }
   }
 }
@@ -1477,21 +1660,6 @@ function showCardModal(kind, text){
     modal.classList.remove('hidden');
     $('cardOk').onclick = ()=>{ closeModal(); resolve(); };
   });
-}
-
-function showGameOver(winner){
-  modalCard.className = 'mcard gameover';
-  modalCard.innerHTML = `
-    <h2>🏆 გამარჯვება!</h2>
-    <div class="icon-big">👑</div>
-    <p style="font-size:18px;font-weight:800;color:#f0f0f8;margin:12px 0">
-      <b style="color:${winner?winner.color:'#fbbf24'}">${winner?winner.name:'მოთამაშე'}</b>-მა გაიმარჯვა!
-    </p>
-    <div class="actions">
-      <button class="btn green" onclick="location.reload()">ახალი თამაში</button>
-    </div>
-  `;
-  modal.classList.remove('hidden');
 }
 </script>
 </body>

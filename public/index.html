@@ -17,7 +17,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;
 button{font-family:inherit;cursor:pointer;border:none;outline:none;background:none;color:inherit;font-weight:inherit}
 button:disabled{cursor:not-allowed}
 
-/* ================= START ================= */
+/* ================= START & LOBBY ================= */
 .start{position:fixed;inset:0;z-index:300;overflow-y:auto;
   background:radial-gradient(ellipse at 50% 10%,rgba(139,92,246,.25) 0%,transparent 55%),
     radial-gradient(ellipse at 50% 90%,rgba(236,72,153,.15) 0%,transparent 55%),#07070d;
@@ -176,7 +176,7 @@ button:disabled{cursor:not-allowed}
 
 .actions{display:flex;gap:1cqmin;z-index:1;width:100%;flex-shrink:0}
 .actions .btn{padding:1.9cqmin 1cqmin;font-size:2.3cqmin;border-radius:1.5cqmin;
-  font-weight:800;letter-spacing:-.01em}
+  font-weight:800;letter-spacing:-.01em;flex:1}
 
 .log{font-size:1.85cqmin;color:#6b7280;text-align:center;height:4.4cqmin;
   overflow:hidden;z-index:1;display:flex;flex-direction:column;justify-content:flex-end;
@@ -227,7 +227,6 @@ button:disabled{cursor:not-allowed}
 .rent-row .lbl b{display:block;color:#f0f0f8;font-size:13px;font-weight:800;margin-top:2px}
 .rent-row .val{font-size:16px;font-weight:900;color:#fbbf24;white-space:nowrap;letter-spacing:-.02em}
 
-/* 🔥 ქირის დონეების ცხრილი */
 .rent-levels{
   margin-top:14px;padding-top:12px;
   border-top:1px solid rgba(255,255,255,.08);
@@ -264,15 +263,6 @@ button:disabled{cursor:not-allowed}
   box-shadow:0 12px 40px rgba(0,0,0,.8);pointer-events:none;max-width:85vw;
   text-align:center;animation:fi .25s}
 
-.resume{position:fixed;top:16px;left:50%;transform:translateX(-50%);
-  background:linear-gradient(160deg,#1a1a26,#0d0d16);border:1px solid rgba(167,139,250,.5);
-  border-radius:16px;padding:12px 16px;z-index:400;display:flex;align-items:center;gap:10px;
-  box-shadow:0 12px 40px rgba(0,0,0,.8);max-width:90vw;animation:fi .3s}
-.resume.hidden{display:none}
-.resume .txt{font-size:12px;color:#cbd5e1;font-weight:700;line-height:1.3}
-.resume .txt small{display:block;color:#6b7280;font-size:10px;font-weight:500;margin-top:2px}
-.resume .mini-btn{padding:9px 12px;font-size:12px}
-
 /* Money particle animation */
 .money-particle{
   position:fixed;z-index:9999;pointer-events:none;
@@ -291,19 +281,21 @@ button:disabled{cursor:not-allowed}
 <div class="start" id="startScreen">
   <div style="text-align:center">
     <h1>მონოპოლია</h1>
-    <div class="sub">40 უჯრა · გაუმჯობესებადი ქონება</div>
+    <div class="sub">40 უჯრა · REAL-TIME MULTIPLAYER</div>
   </div>
-  <div class="setup" id="setup"></div>
+  <div class="setup" id="setup">
+    <div class="prow">
+      <input type="text" id="playerNameInput" placeholder="შეიყვანეთ სახელი" maxlength="14">
+    </div>
+    <div style="margin-top:10px; font-size:13px; color:#9ca3af; text-align:center;" id="lobbyStatus">
+      შეიყვანეთ სახელი და შეუერთდით თამაშს
+    </div>
+    <div id="playersList" style="margin-top:10px; display:flex; flex-direction:column; gap:6px;"></div>
+  </div>
   <div class="start-row">
-    <button class="btn gray" id="addPlayer" style="flex:.5">+ მოთამაშე</button>
-    <button class="btn green" id="startBtn">დაწყება ▶</button>
+    <button class="btn green" id="joinBtn" style="width:100%">შესვლა / დალოდება 🎮</button>
+    <button class="btn orange" id="startBtn" style="width:100%; display:none;">თამაშის დაწყება ▶</button>
   </div>
-</div>
-
-<div class="resume hidden" id="resumeBanner">
-  <div class="txt">შენახული თამაში<small id="resumeInfo"></small></div>
-  <button class="mini-btn" id="resumeBtn">გაგრძელება</button>
-  <button class="mini-btn red" id="discardBtn">✕</button>
 </div>
 
 <div class="game" id="game" style="display:none">
@@ -315,11 +307,11 @@ button:disabled{cursor:not-allowed}
 </div>
 
 <script>
+const socket = io();
+
 /* ================= AUDIO EFFECTS ================= */
 class SoundEffects {
-  constructor(){
-    this.ctx = null;
-  }
+  constructor(){ this.ctx = null; }
   init(){
     if(!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -382,55 +374,8 @@ function triggerMoneyAnimation(amount, isPositive=true) {
   setTimeout(() => el.remove(), 1200);
 }
 
-const PLAYER_COLORS = ['#ef4444','#3b82f6','#22c55e','#f59e0b'];
-const PLAYER_LETTERS = ['1','2','3','4'];
-const DEFAULT_NAMES = ['მოთამაშე 1','მოთამაშე 2','მოთამაშე 3','მოთამაშე 4'];
 const HOUSE_COST = {brown:50,lightblue:50,pink:100,orange:100,red:150,yellow:150,green:200,blue:200};
-const START_MONEY = 1500;
 const GO_BONUS = 200;
-
-const TILES = [
-  {type:'go',    name:'დასაწყისი',  icon:'🏁'},
-  {type:'prop',  name:'აბანოთუბანი', price:60, rent:[2,10,30,90,160,250],     group:'brown',     color:'#955436'},
-  {type:'chest', name:'საზოგადო',   icon:'📦'},
-  {type:'prop',  name:'ორთაჭალა',   price:60, rent:[4,20,60,180,320,450],    group:'brown',     color:'#955436'},
-  {type:'tax',   name:'გადასახადი', amount:200, icon:'💰'},
-  {type:'rail',  name:'რკინიგზა',   price:200, icon:'🚂'},
-  {type:'prop',  name:'ვაკე',       price:100, rent:[6,30,90,270,400,550],   group:'lightblue', color:'#7dd3fc'},
-  {type:'chance',name:'შანსი',      icon:'❓'},
-  {type:'prop',  name:'საბურთალო',  price:100, rent:[6,30,90,270,400,550],   group:'lightblue', color:'#7dd3fc'},
-  {type:'prop',  name:'დიდუბე',     price:120, rent:[8,40,100,300,450,600],  group:'lightblue', color:'#7dd3fc'},
-  {type:'jail',  name:'ციხე',       icon:'🚔'},
-  {type:'prop',  name:'ისანი',      price:140, rent:[10,50,150,450,625,750], group:'pink',      color:'#ec4899'},
-  {type:'util',  name:'ელექტრო',    price:150, icon:'💡'},
-  {type:'prop',  name:'სამგორი',    price:140, rent:[10,50,150,450,625,750], group:'pink',      color:'#ec4899'},
-  {type:'prop',  name:'გლდანი',     price:160, rent:[12,60,180,500,700,900], group:'pink',      color:'#ec4899'},
-  {type:'rail',  name:'აეროპორტი',  price:200, icon:'✈️'},
-  {type:'prop',  name:'ჩუღურეთი',   price:180, rent:[14,70,200,550,750,950], group:'orange',    color:'#f97316'},
-  {type:'chest', name:'საზოგადო',   icon:'📦'},
-  {type:'prop',  name:'ნაძალადევი', price:180, rent:[14,70,200,550,750,950], group:'orange',    color:'#f97316'},
-  {type:'prop',  name:'ავლაბარი',   price:200, rent:[16,80,220,600,800,1000],group:'orange',    color:'#f97316'},
-  {type:'parking',name:'პარკინგი',  icon:'🅿️'},
-  {type:'prop',  name:'ბათუმი',     price:220, rent:[18,90,250,700,875,1050],group:'red',       color:'#ef4444'},
-  {type:'chance',name:'შანსი',      icon:'❓'},
-  {type:'prop',  name:'ქუთაისი',    price:220, rent:[18,90,250,700,875,1050],group:'red',       color:'#ef4444'},
-  {type:'prop',  name:'რუსთავი',    price:240, rent:[20,100,300,750,925,1100],group:'red',      color:'#ef4444'},
-  {type:'rail',  name:'საზღვაო',    price:200, icon:'🚢'},
-  {type:'prop',  name:'თელავი',     price:260, rent:[22,110,330,800,975,1150],group:'yellow',   color:'#eab308'},
-  {type:'prop',  name:'გორი',       price:260, rent:[22,110,330,800,975,1150],group:'yellow',   color:'#eab308'},
-  {type:'util',  name:'წყალი',      price:150, icon:'💧'},
-  {type:'prop',  name:'ზუგდიდი',    price:280, rent:[24,120,360,850,1025,1200],group:'yellow', color:'#eab308'},
-  {type:'gotojail',name:'ციხეში!',  icon:'👮'},
-  {type:'prop',  name:'ფოთი',       price:300, rent:[26,130,390,900,1100,1275],group:'green',  color:'#22c55e'},
-  {type:'prop',  name:'ქობულეთი',   price:300, rent:[26,130,390,900,1100,1275],group:'green',  color:'#22c55e'},
-  {type:'chest', name:'საზოგადო',   icon:'📦'},
-  {type:'prop',  name:'ბაკურიანი',  price:320, rent:[28,150,450,1000,1200,1400],group:'green',color:'#22c55e'},
-  {type:'rail',  name:'მთის სადგ.', price:200, icon:'🚂'},
-  {type:'chance',name:'შანსი',      icon:'❓'},
-  {type:'prop',  name:'გუდაური',    price:350, rent:[35,175,500,1100,1300,1500],group:'blue',  color:'#3b82f6'},
-  {type:'tax',   name:'ფუფუნება',   amount:100, icon:'💎'},
-  {type:'prop',  name:'თბილისი',    price:400, rent:[50,200,600,1400,1700,2000],group:'blue', color:'#3b82f6'},
-];
 
 function tileGrid(i){
   if(i<=10)  return {r:11,c:11-i,side:'bottom',corner:i===0||i===10};
@@ -440,33 +385,6 @@ function tileGrid(i){
 }
 
 const FACE = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
-
-const CHANCE_CARDS = [
-  {t:'გადადი დასაწყისში (+200₾)', f:p=>{p.pos=0;p.money+=GO_BONUS; triggerMoneyAnimation(GO_BONUS, true);}},
-  {t:'+150₾ ბანკიდან',              f:p=>{p.money+=150; triggerMoneyAnimation(150, true);}},
-  {t:'-100₾ ბანკს',                 f:p=>{p.money-=100; triggerMoneyAnimation(100, false);}},
-  {t:'გადადი ციხეში!',              f:p=>{p.pos=10;p.inJail=true;}},
-  {t:'+50₾ ლატარია',                f:p=>{p.money+=50; triggerMoneyAnimation(50, true);}},
-  {t:'-75₾ ჯარიმა',                 f:p=>{p.money-=75; triggerMoneyAnimation(75, false);}},
-  {t:'+200₾ ინვესტიცია',            f:p=>{p.money+=200; triggerMoneyAnimation(200, true);}},
-  {t:'-150₾ რემონტი',               f:p=>{p.money-=150; triggerMoneyAnimation(150, false);}},
-  {t:'გადადი პარკინგზე',            f:p=>{p.pos=20;}},
-  {t:'+100₾ ბონუსი',                f:p=>{p.money+=100; triggerMoneyAnimation(100, true);}},
-  {t:'🎫 თავისუფლების ბარათი!',     f:p=>{p.jailCards++;}},
-];
-const CHEST_CARDS = [
-  {t:'+200₾ მემკვიდრეობა',         f:p=>{p.money+=200; triggerMoneyAnimation(200, true);}},
-  {t:'-50₾ ექიმი',                 f:p=>{p.money-=50; triggerMoneyAnimation(50, false);}},
-  {t:'+100₾ დაბრუნება',            f:p=>{p.money+=100; triggerMoneyAnimation(100, true);}},
-  {t:'-200₾ გადასახადი',           f:p=>{p.money-=200; triggerMoneyAnimation(200, false);}},
-  {t:'+50₾ გაყიდვა',               f:p=>{p.money+=50; triggerMoneyAnimation(50, true);}},
-  {t:'-100₾ შეკეთება',             f:p=>{p.money-=100; triggerMoneyAnimation(100, false);}},
-  {t:'+300₾ ლატარეა',              f:p=>{p.money+=300; triggerMoneyAnimation(300, true);}},
-  {t:'გადადი დასაწყისში (+200₾)', f:p=>{p.pos=0;p.money+=GO_BONUS; triggerMoneyAnimation(GO_BONUS, true);}},
-  {t:'-75₾ ბანკი',                 f:p=>{p.money-=75; triggerMoneyAnimation(75, false);}},
-  {t:'+150₾ დივიდენდი',            f:p=>{p.money+=150; triggerMoneyAnimation(150, true);}},
-  {t:'🎫 თავისუფლების ბარათი!',    f:p=>{p.jailCards++;}},
-];
 
 const HOUSE_SVG = `<svg class="house-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
   <polygon points="8,1.5 15,8.5 13.2,8.5 13.2,14.5 2.8,14.5 2.8,8.5 1,8.5"
@@ -490,9 +408,7 @@ const HOTEL_SVG = `<svg class="house-svg hotel" xmlns="http://www.w3.org/2000/sv
 </svg>`;
 
 const $ = id => document.getElementById(id);
-const rand = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const shuffle = a => { for(let i=a.length-1;i>0;i--){const j=rand(0,i);[a[i],a[j]]=[a[j],a[i]]} return a };
 
 function toast(msg){
   const t = document.createElement('div');
@@ -502,99 +418,111 @@ function toast(msg){
 }
 
 let S = null;
-let animating = false;
-const SAVE_KEY = 'monopoly_save_v1';
+let myPlayerId = null;
+let boardBuilt = false;
 
-function newState(players){
-  return {
-    players: players.map((p,i)=>({
-      id:i, name:p.name, color:p.color, letter:PLAYER_LETTERS[i],
-      money:START_MONEY, pos:0, props:[],
-      inJail:false, jailTurns:0, jailCards:0, dead:false, doubles:0
-    })),
-    tiles: TILES.map(t=>({...t, owner:null, houses:0})),
-    current: 0, dice:[1,1], logs:[], phase:'idle',
-    lastRoll: 0, gameOver: false,
-    chanceDeck: shuffle([...CHANCE_CARDS]),
-    chestDeck: shuffle([...CHEST_CARDS]),
-  };
-}
-function saveGame(){ if(!S||S.gameOver)return; try{localStorage.setItem(SAVE_KEY,JSON.stringify(S))}catch(e){} }
-function loadGame(){ try{const r=localStorage.getItem(SAVE_KEY);return r?JSON.parse(r):null}catch(e){return null} }
-function clearSave(){ try{localStorage.removeItem(SAVE_KEY)}catch(e){} }
-
-/* ============= SETUP ============= */
-const setupEl = $('setup');
-let setupPlayers = [
-  {name:'მოთამაშე 1', color:PLAYER_COLORS[0]},
-  {name:'მოთამაშე 2', color:PLAYER_COLORS[1]},
-];
-function renderSetup(){
-  setupEl.innerHTML = '';
-  setupPlayers.forEach((p,i)=>{
-    const row = document.createElement('div');
-    row.className = 'prow';
-    row.innerHTML = `
-      <div class="cdot" style="background:${p.color};box-shadow:0 0 12px ${p.color}aa"></div>
-      <input type="text" value="${p.name}" placeholder="სახელი" maxlength="14" data-i="${i}">
-      ${setupPlayers.length>2 ? `<button class="mini-btn red" style="padding:7px 11px;font-size:13px" data-del="${i}">✕</button>` : ''}
-    `;
-    setupEl.appendChild(row);
-  });
-  setupEl.querySelectorAll('input').forEach(inp=>{
-    inp.addEventListener('input', e=>{
-      const i = +e.target.dataset.i;
-      setupPlayers[i].name = e.target.value.trim() || DEFAULT_NAMES[i];
-    });
-  });
-  setupEl.querySelectorAll('[data-del]').forEach(b=>{
-    b.addEventListener('click', e=>{
-      const i = +e.target.closest('[data-del]').dataset.del;
-      setupPlayers.splice(i,1);
-      setupPlayers.forEach((p,j)=>p.color = PLAYER_COLORS[j]);
-      renderSetup();
-    });
-  });
-  $('addPlayer').style.display = setupPlayers.length >= 4 ? 'none' : 'block';
-}
-renderSetup();
-
-$('addPlayer').addEventListener('click', ()=>{
-  if(setupPlayers.length >= 4) return;
-  const i = setupPlayers.length;
-  setupPlayers.push({name: DEFAULT_NAMES[i], color: PLAYER_COLORS[i]});
-  renderSetup();
+/* ============= LOBBY / MULTIPLAYER NETWORKING ============= */
+$('joinBtn').addEventListener('click', ()=>{
+  const name = $('playerNameInput').value.trim();
+  if(!name){ toast('გთხოვთ შეიყვანოთ სახელი!'); return; }
+  sfx.init();
+  socket.emit('joinGame', { name });
+  $('joinBtn').disabled = true;
+  $('playerNameInput').disabled = true;
 });
-
-(function checkResume(){
-  const s = loadGame();
-  if(s && !s.gameOver){
-    $('resumeBanner').classList.remove('hidden');
-    const p = s.players[s.current];
-    $('resumeInfo').textContent = `${s.players.length} მოთამაშე · სვლა: ${p.name}`;
-  }
-})();
-$('resumeBtn').addEventListener('click', ()=>{
-  const s = loadGame();
-  if(!s){ toast('შენახული თამაში ვერ მოიძებნა'); return; }
-  $('resumeBanner').classList.add('hidden');
-  $('startScreen').style.display = 'none';
-  $('game').style.display = 'flex';
-  S = s;
-  buildBoard(); renderAll();
-  addLog('თამაში გაგრძელდა შენახული მდგომარეობიდან');
-});
-$('discardBtn').addEventListener('click', ()=>{ clearSave(); $('resumeBanner').classList.add('hidden'); });
 
 $('startBtn').addEventListener('click', ()=>{
-  sfx.init();
-  clearSave();
-  $('startScreen').style.display = 'none';
-  $('game').style.display = 'flex';
-  S = newState(setupPlayers);
-  buildBoard(); renderAll();
-  addLog(`თამაში დაიწყო! ${S.players[0].name}-ის სვლაა.`);
-  saveGame();
+  socket.emit('startGame');
+});
+
+socket.on('initPlayer', (data)=>{
+  myPlayerId = data.id;
+});
+
+socket.on('lobbyUpdate', (data)=>{
+  const listEl = $('playersList');
+  listEl.innerHTML = '';
+  data.players.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'prow';
+    row.style.padding = '8px 12px';
+    row.innerHTML = `
+      <div class="cdot" style="background:${p.color};box-shadow:0 0 12px ${p.color}aa"></div>
+      <div style="font-weight:700;font-size:14px;color:#f0f0f8">${p.name} ${p.id === myPlayerId ? '(შენ)' : ''}</div>
+    `;
+    listEl.appendChild(row);
+  });
+
+  const statusEl = $('lobbyStatus');
+  if(data.isHost){
+    statusEl.textContent = 'შენ ხარ ჰოსტი. დაელოდე მოთამაშეებს და დაიწყე!';
+    $('startBtn').style.display = 'block';
+  } else {
+    statusEl.textContent = 'ველით ჰოსტის მიერ თამაშის დაწყებას...';
+    $('startBtn').style.display = 'none';
+  }
+});
+
+socket.on('gameState', (state)=>{
+  S = state;
+  if(S.status === 'playing'){
+    $('startScreen').style.display = 'none';
+    $('game').style.display = 'flex';
+    if(!boardBuilt){
+      buildBoard();
+      boardBuilt = true;
+    }
+    renderAll();
+  }
+});
+
+socket.on('diceRolled', async (data)=>{
+  sfx.roll();
+  await animateDice(data.d1, data.d2);
+});
+
+socket.on('playerMoved', async (data)=>{
+  const player = S.players.find(p=>p.id === data.playerId);
+  if(player){
+    await animateMove(player, data.steps);
+  }
+});
+
+socket.on('showModal', async (data)=>{
+  if(data.targetPlayerId && data.targetPlayerId !== myPlayerId) return;
+  
+  if(data.type === 'buy'){
+    const tile = S.tiles[data.tileIndex];
+    const player = S.players.find(p=>p.id === myPlayerId);
+    const result = await showBuyModal(tile, player);
+    socket.emit('modalAction', { action: 'buy', value: result });
+  } else if(data.type === 'upgrade'){
+    const tile = S.tiles[data.tileIndex];
+    const player = S.players.find(p=>p.id === myPlayerId);
+    const result = await showUpgradeModal(tile, player, data.cost);
+    socket.emit('modalAction', { action: 'upgrade', value: result });
+  } else if(data.type === 'card'){
+    await showCardModal(data.kind, data.text);
+    socket.emit('modalAction', { action: 'cardAck' });
+  } else if(data.type === 'rentOrBuyout'){
+    const tile = S.tiles[data.tileIndex];
+    const player = S.players.find(p=>p.id === myPlayerId);
+    const owner = S.players.find(p=>p.id === tile.owner);
+    const result = await showRentOrBuyoutModal(tile, player, owner, data.rent, data.buyout, data.canBuyout);
+    socket.emit('modalAction', { action: 'rentOrBuyout', value: result });
+  }
+});
+
+socket.on('moneyAnim', (data)=>{
+  if(data.amount) triggerMoneyAnimation(data.amount, data.isPositive);
+});
+
+socket.on('sfx', (data)=>{
+  if(sfx[data.name]) sfx[data.name]();
+});
+
+socket.on('toast', (data)=>{
+  toast(data.msg);
 });
 
 /* ============= BOARD ============= */
@@ -673,12 +601,12 @@ function buildBoard(){
     board.appendChild(el);
   });
 
-  $('rollBtn').addEventListener('click', onRoll);
-  $('endBtn').addEventListener('click', onEndTurn);
+  $('rollBtn').addEventListener('click', ()=>{ socket.emit('rollDice'); });
+  $('endBtn').addEventListener('click', ()=>{ socket.emit('endTurn'); });
 }
 
 /* ================= LONG PRESS ================= */
-let lpTimer = null, lpX = 0, lpY = 0, lpFired = false;
+let lpTimer = null, lpX = 0, lpY = 0;
 
 function attachLongPress(el, idx){
   el.addEventListener('contextmenu', e => e.preventDefault());
@@ -686,12 +614,10 @@ function attachLongPress(el, idx){
   el.addEventListener('pointerdown', (e)=>{
     if(!S || S.gameOver) return;
     if(e.button !== undefined && e.button !== 0) return;
-    lpFired = false;
     lpX = e.clientX; lpY = e.clientY;
     if(lpTimer) clearTimeout(lpTimer);
     lpTimer = setTimeout(()=>{
       lpTimer = null;
-      lpFired = true;
       if(navigator.vibrate) navigator.vibrate(15);
       showTileInfo(idx);
     }, 450);
@@ -717,7 +643,7 @@ function checkMonopoly(group, ownerId) {
 /* ================= showTileInfo ================= */
 function showTileInfo(idx){
   const t = S.tiles[idx];
-  const owner = t.owner != null ? S.players[t.owner] : null;
+  const owner = t.owner != null ? S.players.find(p=>p.id === t.owner) : null;
   const currentP = S.players[S.current];
 
   let html = '';
@@ -730,7 +656,7 @@ function showTileInfo(idx){
     const isMono = checkMonopoly(t.group, owner.id);
     html += `<div class="owner-chip" style="background:${owner.color}22;border:1px solid ${owner.color}66;color:${owner.color}">
       <span class="dot" style="background:${owner.color};box-shadow:0 0 8px ${owner.color}"></span>
-      ${owner.name}${owner.id === currentP.id ? ' (შენ)' : ''} ${isMono ? '👑 [მონოპოლია]' : ''}
+      ${owner.name}${owner.id === myPlayerId ? ' (შენ)' : ''} ${isMono ? '👑 [მონოპოლია]' : ''}
     </div>`;
   } else if(['prop','rail','util'].includes(t.type)){
     html += `<div class="owner-chip" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#9ca3af">
@@ -819,7 +745,7 @@ function showTileInfo(idx){
   if(t.type === 'jail') html += `<div style="font-size:12px;color:#9ca3af;margin-top:10px">უბრალოდ სტუმრობ ციხეს</div>`;
 
   let canSellHouse = false;
-  if(owner && owner.id === currentP.id && t.type === 'prop' && t.houses > 0){
+  if(owner && owner.id === myPlayerId && currentP.id === myPlayerId && t.type === 'prop' && t.houses > 0){
     canSellHouse = true;
   }
 
@@ -837,10 +763,8 @@ function showTileInfo(idx){
 
   if(canSellHouse){
     $('sellHBtn').onclick = ()=>{
-      sellHouse(idx);
-      renderAll(); saveGame();
+      socket.emit('sellHouse', { tileIndex: idx });
       closeModal();
-      toast('სახლი გაიყიდა ✓');
     };
   }
   $('closeInfoBtn').onclick = closeModal;
@@ -872,12 +796,13 @@ function renderDice(){ setDiceFace($('dice1'),S.dice[0]); setDiceFace($('dice2')
 function renderPlayers(){
   const el = $('players'); el.innerHTML = '';
   S.players.forEach((p,i)=>{
+    const isTurn = i === S.current;
     const c = document.createElement('div');
-    c.className = 'pcard' + (i===S.current && !S.gameOver ? ' active' : '') + (p.dead ? ' dead' : '');
+    c.className = 'pcard' + (isTurn && !S.gameOver ? ' active' : '') + (p.dead ? ' dead' : '');
     c.style.setProperty('--pc', p.color);
     c.innerHTML = `
       <div class="pd" style="background:${p.color};box-shadow:0 0 10px ${p.color}aa"></div>
-      <div class="pn">${p.name}${p.inJail?' 🔒':''}${p.jailCards?' 🎫':''}</div>
+      <div class="pn">${p.name}${p.id===myPlayerId?' (შენ)':''}${p.inJail?' 🔒':''}${p.jailCards?' 🎫':''}</div>
       <div class="pm">${p.money}₾</div>
     `;
     el.appendChild(c);
@@ -908,7 +833,8 @@ function renderOwners(){
     if(badge) badge.remove();
 
     if(t.owner != null){
-      const owner = S.players[t.owner];
+      const owner = S.players.find(p=>p.id === t.owner);
+      if(!owner) return;
       el.classList.add('owned');
       ring.style.borderColor = owner.color;
       ring.style.boxShadow = `inset 0 0 0 1px rgba(255,255,255,.15), inset 0 0 20px ${owner.color}66, 0 0 10px ${owner.color}88`;
@@ -957,7 +883,8 @@ function renderTurn(){
     return;
   }
   const p = S.players[S.current];
-  el.innerHTML = `სვლა: <b style="color:${p.color}">${p.name}</b><span class="hint">👆 ხანგრძლივი დაჭერა უჯრაზე = ინფო</span>`;
+  const isMyTurn = p.id === myPlayerId;
+  el.innerHTML = `სვლა: <b style="color:${p.color}">${p.name}${isMyTurn?' (შენი სვლაა!)':''}</b><span class="hint">👆 ხანგრძლივი დაჭერა უჯრაზე = ინფო</span>`;
 }
 
 function renderLog(){
@@ -969,15 +896,23 @@ function renderLog(){
 
 function renderButtons(){
   const roll = $('rollBtn'), end = $('endBtn');
-  if(S.gameOver || animating){ roll.disabled=end.disabled=true; return; }
-  if(S.phase==='idle'){
-    roll.disabled=false; end.disabled=true;
-    const p = S.players[S.current];
-    if(p.inJail && p.jailCards>0) roll.textContent = '🎫 ბარათი';
-    else if(p.inJail) roll.textContent = '🔓 ციხიდან';
+  const activeP = S.players[S.current];
+  const isMyTurn = activeP && activeP.id === myPlayerId;
+
+  if(S.gameOver || !isMyTurn){
+    roll.disabled = end.disabled = true;
+    return;
+  }
+
+  if(S.phase === 'idle'){
+    roll.disabled = false; end.disabled = true;
+    if(activeP.inJail && activeP.jailCards > 0) roll.textContent = '🎫 ბარათი';
+    else if(activeP.inJail) roll.textContent = '🔓 ციხიდან';
     else roll.textContent = '🎲 გაგორება';
-  } else if(S.phase==='can-end'){
-    roll.disabled=true; end.disabled=false;
+  } else if(S.phase === 'can-end'){
+    roll.disabled = true; end.disabled = false;
+  } else {
+    roll.disabled = end.disabled = true;
   }
 }
 
@@ -986,76 +921,12 @@ function renderAll(){
   renderHouses(); renderTurn(); renderLog(); renderButtons();
 }
 
-function addLog(msg){
-  S.logs.push(msg); if(S.logs.length>60)S.logs.shift(); renderLog();
-}
-
-/* ============= GAME FLOW ============= */
-async function onRoll(){
-  if(animating||S.gameOver||S.phase!=='idle')return;
-  sfx.roll();
-  const p = S.players[S.current];
-
-  if(p.inJail && p.jailCards > 0){
-    p.jailCards--; p.inJail = false; p.jailTurns = 0;
-    addLog(`${p.name} გამოიყენა 🎫 თავისუფლების ბარათი`);
-    renderPlayers();
-  }
-
-  animating = true; renderButtons();
-  const d1 = rand(1,6), d2 = rand(1,6);
-  await animateDice(d1,d2);
-  S.dice = [d1,d2]; S.lastRoll = d1+d2;
-  const isDouble = d1 === d2;
-
-  if(p.inJail){
-    if(isDouble){
-      p.inJail = false; p.jailTurns = 0;
-      addLog(`${p.name} გამოვიდა ციხიდან დუბლით`);
-      await animateMove(p, d1+d2); await handleLanding(p);
-    } else {
-      p.jailTurns++;
-      if(p.jailTurns >= 3){
-        p.money -= 50; p.inJail = false; p.jailTurns = 0;
-        triggerMoneyAnimation(50, false);
-        addLog(`${p.name} გადაიხადა 50₾ და გამოვიდა`);
-        await animateMove(p, d1+d2); await handleLanding(p);
-      } else {
-        addLog(`${p.name} ციხეში რჩება (${p.jailTurns}/3)`);
-      }
-    }
-    animating = false;
-    if(!S.gameOver) S.phase='can-end';
-    renderAll(); checkBankrupt(); saveGame(); return;
-  }
-
-  addLog(`${p.name} გააგორა ${d1}+${d2}=${d1+d2}${isDouble?' 🎯':''}`);
-  await animateMove(p, d1+d2);
-  await handleLanding(p);
-  checkBankrupt();
-
-  if(isDouble && !S.gameOver){
-    p.doubles++;
-    if(p.doubles >= 3){
-      addLog(`${p.name} 3 დუბლი — ციხეში!`);
-      p.pos = 10; p.inJail = true; p.doubles = 0;
-      renderTokens(); renderPlayers();
-      animating = false; S.phase = 'can-end'; renderAll(); saveGame(); return;
-    }
-    addLog(`${p.name} დუბლი — კიდევ აგორებს!`);
-    animating = false; S.phase = 'idle'; renderAll(); saveGame(); return;
-  }
-
-  p.doubles = 0; animating = false;
-  if(!S.gameOver) S.phase='can-end';
-  renderAll(); saveGame();
-}
-
 async function animateDice(d1,d2){
   const e1 = $('dice1'), e2 = $('dice2');
   e1.classList.add('shake'); e2.classList.add('shake');
   for(let i=0;i<8;i++){
-    setDiceFace(e1, rand(1,6)); setDiceFace(e2, rand(1,6));
+    setDiceFace(e1, Math.floor(Math.random()*6)+1);
+    setDiceFace(e2, Math.floor(Math.random()*6)+1);
     await sleep(50);
   }
   setDiceFace(e1,d1); setDiceFace(e2,d2);
@@ -1066,182 +937,8 @@ async function animateDice(d1,d2){
 async function animateMove(p, steps){
   for(let s=0;s<steps;s++){
     p.pos = (p.pos+1) % 40;
-    if(p.pos === 0){ 
-      p.money += GO_BONUS; 
-      triggerMoneyAnimation(GO_BONUS, true);
-      addLog(`${p.name} გაიარა დასაწყისი +${GO_BONUS}₾`); 
-    }
     renderTokens(); renderPlayers();
     await sleep(80);
-  }
-}
-
-async function handleLanding(p){
-  const t = S.tiles[p.pos];
-  addLog(`${p.name} → ${t.name}`);
-
-  if(t.type === 'prop' || t.type === 'rail' || t.type === 'util'){
-    if(t.owner === null){
-      if(p.money >= t.price){
-        const buy = await showBuyModal(t, p);
-        if(buy){
-          p.money -= t.price; t.owner = p.id; p.props.push(p.pos);
-          sfx.buy();
-          triggerMoneyAnimation(t.price, false);
-          addLog(`${p.name} იყიდა ${t.name} ${t.price}₾`);
-
-          if(t.type === 'prop' && checkMonopoly(t.group, p.id)){
-            sfx.monopoly();
-            toast(`🎉 ${p.name}-მა შეაგროვა მონოპოლია (${t.group})! ქირა გაორმაგდა!`);
-            addLog(`👑 ${p.name}-მა შეაგროვა ${t.group} მონოპოლია!`);
-          }
-
-          renderOwners(); renderPlayers();
-        } else addLog(`${p.name} არ იყიდა ${t.name}`);
-      } else { toast('არ გყოფნის ფული 💸'); }
-    }
-    else if(t.owner === p.id){
-      if(t.type === 'prop'){
-        const cost = HOUSE_COST[t.group];
-        if(t.houses === 5){
-          addLog(`${t.name} — 🏨 სასტუმრო უკვე აშენებულია`);
-          toast('🏨 სასტუმრო უკვეა');
-        } else if(p.money < cost){
-          addLog(`${t.name} — არ გყოფნის ფული (${cost}₾)`);
-          toast(`საჭიროა ${cost}₾ 💸`);
-        } else {
-          const willBuild = await showUpgradeModal(t, p, cost);
-          if(willBuild){
-            p.money -= cost; t.houses++;
-            sfx.buy();
-            triggerMoneyAnimation(cost, false);
-            addLog(`${p.name} ააშენა ${t.houses===5?'🏨 სასტუმრო':'🏠 სახლი'} — ${t.name} (${cost}₾)`);
-            renderHouses(); renderPlayers();
-          } else {
-            addLog(`${p.name} არ გააუმჯობესა ${t.name}`);
-          }
-        }
-      } else {
-        addLog(`${t.name} — შენი ქონებაა`);
-      }
-    }
-    else {
-      const owner = S.players[t.owner];
-      const rent = calcRent(t);
-      const buyout = buyoutPrice(t);
-      const canBuyout = p.money >= buyout;
-      const choice = await showRentOrBuyoutModal(t, p, owner, rent, buyout, canBuyout);
-      if(choice === 'buyout'){
-        p.money -= buyout;
-        owner.money += buyout;
-        triggerMoneyAnimation(buyout, false);
-        sfx.buy();
-        owner.props = owner.props.filter(x => x !== p.pos);
-        t.owner = p.id; t.houses = 0;
-        p.props.push(p.pos);
-        addLog(`${p.name} გამოისყიდა ${t.name} ${buyout}₾-ად`);
-
-        if(t.type === 'prop' && checkMonopoly(t.group, p.id)){
-          sfx.monopoly();
-          toast(`🎉 ${p.name}-მა შეაგროვა მონოპოლია (${t.group})!`);
-          addLog(`👑 ${p.name}-მა შეაგროვა ${t.group} მონოპოლია!`);
-        }
-
-        renderOwners(); renderHouses(); renderPlayers();
-      } else {
-        p.money -= rent; owner.money += rent;
-        triggerMoneyAnimation(rent, false);
-        addLog(`${p.name} გადაიხადა ${rent}₾ → ${owner.name}`);
-        renderPlayers();
-      }
-    }
-  }
-  else if(t.type === 'tax'){
-    p.money -= t.amount;
-    triggerMoneyAnimation(t.amount, false);
-    addLog(`${p.name} გადაიხადა გადასახადი ${t.amount}₾`);
-    renderPlayers();
-  }
-  else if(t.type === 'chance'){ await playCard(p,'chance'); }
-  else if(t.type === 'chest'){ await playCard(p,'chest'); }
-  else if(t.type === 'gotojail'){
-    p.pos = 10; p.inJail = true; p.jailTurns = 0;
-    addLog(`${p.name} ციხეში წავიდა! 🔒`);
-    renderTokens(); renderPlayers();
-  }
-  else if(t.type === 'parking') addLog(`დასვენება პარკინგზე 🅿️`);
-  else if(t.type === 'go') addLog(`${p.name} დასაწყისზეა`);
-  else if(t.type === 'jail') addLog(`უბრალოდ ციხესთან გაიარა`);
-}
-
-function calcRent(t){
-  if(t.type === 'rail'){
-    const owner = S.players[t.owner];
-    const count = S.tiles.filter(x => x.type==='rail' && x.owner===owner.id).length;
-    return [0,25,50,100,200][count];
-  }
-  if(t.type === 'util'){
-    const owner = S.players[t.owner];
-    const count = S.tiles.filter(x => x.type==='util' && x.owner===owner.id).length;
-    return (count===2?10:4) * S.lastRoll;
-  }
-  if(t.type === 'prop'){
-    const owner = S.players[t.owner];
-    const ownsAll = checkMonopoly(t.group, owner.id);
-    if(t.houses === 0) return ownsAll ? t.rent[0]*2 : t.rent[0];
-    return t.rent[t.houses];
-  }
-  return 0;
-}
-function buyoutPrice(t){ return Math.round(t.price * 1.5 / 10) * 10; }
-
-async function playCard(p, kind){
-  const deck = kind==='chance' ? S.chanceDeck : S.chestDeck;
-  const refill = () => kind==='chance' ? shuffle([...CHANCE_CARDS]) : shuffle([...CHEST_CARDS]);
-  if(deck.length === 0) deck.push(...refill());
-  const card = deck.shift();
-  await showCardModal(kind, card.t);
-  card.f(p);
-  renderTokens(); renderPlayers(); renderOwners();
-  addLog(`${kind==='chance'?'❓':'📦'} ${card.t}`);
-}
-
-function onEndTurn(){
-  if(S.gameOver||S.phase!=='can-end')return;
-  S.phase = 'idle';
-  const p = S.players[S.current]; p.doubles = 0;
-  let next = (S.current+1) % S.players.length; let guard = 0;
-  while(S.players[next].dead && guard++ < 10) next = (next+1) % S.players.length;
-  S.current = next;
-  addLog(`ახლა ${S.players[S.current].name}-ის სვლაა`);
-  renderAll(); saveGame();
-}
-
-function checkBankrupt(){
-  let anyDead = false;
-  S.players.forEach(p=>{
-    if(!p.dead && p.money < 0){
-      p.props.forEach(pos=>{
-        const t = S.tiles[pos];
-        if(t.houses > 0){ p.money += t.houses * Math.floor((HOUSE_COST[t.group]||100)/2); t.houses = 0; }
-        t.owner = null;
-      });
-      p.props = [];
-      if(p.money < 0){ 
-        p.dead = true; 
-        anyDead = true; 
-        sfx.bankrupt();
-        addLog(`💀 ${p.name} გაკოტრდა!`); 
-      }
-    }
-  });
-  if(anyDead){
-    renderOwners(); renderHouses();
-    const alive = S.players.filter(p=>!p.dead);
-    if(alive.length <= 1){
-      S.gameOver = true; clearSave(); renderAll();
-      setTimeout(()=>showGameOver(alive[0]), 500);
-    }
   }
 }
 
@@ -1257,15 +954,6 @@ function calcRentForDisplay(t, owner){
   }
   if(t.type === 'util') return '4×/10× 🎲';
   return 0;
-}
-
-function sellHouse(pos){
-  const t = S.tiles[pos]; const p = S.players[S.current];
-  const cost = Math.floor(HOUSE_COST[t.group]/2);
-  p.money += cost; t.houses--;
-  triggerMoneyAnimation(cost, true);
-  addLog(`${p.name} გაყიდა სახლი — ${t.name} (+${cost}₾)`);
-  renderHouses(); renderPlayers();
 }
 
 /* ============= MODALS ============= */
@@ -1314,28 +1002,22 @@ function showUpgradeModal(tile, player, cost){
       : `🏠 ${tile.houses} სახლი`;
     const nextLevel = tile.houses === 4 ? '🏨 სასტუმრო' : `🏠 ${tile.houses+1} სახლი`;
     const nextRent = tile.rent[tile.houses+1] || tile.rent[5];
-    const currentRent = calcRent(tile);
 
     modalCard.innerHTML = `
       <h2>${tile.name}</h2>
       <div class="cat">შენი ქონებაა — გააუმჯობესე?</div>
       ${tile.color ? `<div class="color-bar" style="background:${tile.color};color:${tile.color}"></div>` : ''}
-      <div style="font-size:13px;color:#cbd5e1;margin:8px 0">
-        მიმდინარე: <b>${currentLevel}</b> · ქირა <b style="color:#fbbf24">${currentRent}₾</b>
-      </div>
-      <div class="rent-row">
-        <div class="lbl">შემდეგი დონე: <b>${nextLevel}</b></div>
-        <div class="val">${nextRent}₾ ქირა</div>
-      </div>
+      <p style="font-size:13px;color:#9ca3af">ამჟამად: <b>${currentLevel}</b></p>
       <div class="price">${cost}₾</div>
+      <div style="font-size:13px;color:#6ee7b7;margin:6px 0">ახალი დონე: <b>${nextLevel}</b> → ქირა: <b>${nextRent}₾</b></div>
       <div class="balance">ბალანსი: <b style="color:#fbbf24">${player.money}₾</b></div>
       <div class="actions">
         <button class="btn gray" id="passUB">არა</button>
-        <button class="btn green" id="buildUB">აშენება</button>
+        <button class="btn green" id="upgB">აშენება</button>
       </div>
     `;
     modal.classList.remove('hidden');
-    $('buildUB').onclick = ()=>{ closeModal(); resolve(true); };
+    $('upgB').onclick = ()=>{ closeModal(); resolve(true); };
     $('passUB').onclick = ()=>{ closeModal(); resolve(false); };
   });
 }
@@ -1345,22 +1027,22 @@ function showRentOrBuyoutModal(tile, player, owner, rent, buyout, canBuyout){
     modalCard.className = 'mcard';
     modalCard.innerHTML = `
       <h2>${tile.name}</h2>
-      <div class="cat">ეკუთვნის: <b style="color:${owner.color}">${owner.name}</b>-ს</div>
-      ${tile.color ? `<div class="color-bar" style="background:${tile.color};color:${tile.color}"></div>` : `<div class="icon-big">${tile.icon||'🏠'}</div>`}
+      <div class="cat">სხვისი ქონება — ${owner ? owner.name : ''}</div>
+      ${tile.color ? `<div class="color-bar" style="background:${tile.color};color:${tile.color}"></div>` : ''}
       <div class="rent-row">
-        <div class="lbl">გადასახდელი ქირა</div>
-        <div class="val" style="color:#ef4444">${rent}₾</div>
+        <div class="lbl">გადასახდელი ქირა<b>${owner ? owner.name : ''}-ს</b></div>
+        <div class="val">${rent}₾</div>
       </div>
       <div class="balance" style="margin-top:10px">შენი ბალანსი: <b style="color:#fbbf24">${player.money}₾</b></div>
       <div class="actions">
-        <button class="btn red" id="payRentB">გადაიხადე ქირა (${rent}₾)</button>
-        ${canBuyout ? `<button class="btn orange" id="buyoutB">გამოისყიდე (${buyout}₾)</button>` : ''}
+        <button class="btn red" id="payRentBtn">გადაიხადე ქირა (${rent}₾)</button>
+        ${canBuyout ? `<button class="btn orange" id="buyoutBtn">გამოსყიდვა (${buyout}₾)</button>` : ''}
       </div>
     `;
     modal.classList.remove('hidden');
-    $('payRentB').onclick = ()=>{ closeModal(); resolve('rent'); };
+    $('payRentBtn').onclick = ()=>{ closeModal(); resolve('rent'); };
     if(canBuyout){
-      $('buyoutB').onclick = ()=>{ closeModal(); resolve('buyout'); };
+      $('buyoutBtn').onclick = ()=>{ closeModal(); resolve('buyout'); };
     }
   });
 }
@@ -1371,27 +1053,12 @@ function showCardModal(kind, text){
     modalCard.innerHTML = `
       <h2>${kind==='chance'?'❓ შანსი':'📦 საზოგადოებრივი ყუთი'}</h2>
       <div class="icon-big">${kind==='chance'?'❓':'📦'}</div>
-      <p style="font-size:16px;font-weight:700;margin:16px 0">${text}</p>
-      <div class="actions">
-        <button class="btn green" id="cardOkB">გასაგებია</button>
-      </div>
+      <p style="font-size:18px;font-weight:800;color:#fff;margin:16px 0">${text}</p>
+      <button class="btn green" id="cardOkBtn" style="width:100%">გასაგებია</button>
     `;
     modal.classList.remove('hidden');
-    $('cardOkB').onclick = ()=>{ closeModal(); resolve(); };
+    $('cardOkBtn').onclick = ()=>{ closeModal(); resolve(); };
   });
-}
-
-function showGameOver(winner){
-  modalCard.className = 'mcard gameover';
-  modalCard.innerHTML = `
-    <h2>🏆 თამაში დასრულდა!</h2>
-    <div class="icon-big">👑</div>
-    <p style="font-size:18px;font-weight:800;color:#c4b5fd">${winner ? winner.name : 'არავინ'} გაიმარჯვა!</p>
-    <div class="actions" style="margin-top:20px">
-      <button class="btn green" onclick="location.reload()">ახალი თამაში</button>
-    </div>
-  `;
-  modal.classList.remove('hidden');
 }
 </script>
 </body>

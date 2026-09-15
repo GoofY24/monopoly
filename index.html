@@ -1324,8 +1324,8 @@ function showUpgradeModal(tile, player, cost){
         მიმდინარე: <b>${currentLevel}</b> · ქირა <b style="color:#fbbf24">${currentRent}₾</b>
       </div>
       <div class="rent-row">
-        <div class="lbl">შემდეგი დონე<b>${nextLevel}</b></div>
-        <div class="val">+${nextRent - currentRent}₾ ქირა (${nextRent}₾)</div>
+        <div class="lbl">შემდეგი დონე: <b>${nextLevel}</b></div>
+        <div class="val">${nextRent}₾ ქირა</div>
       </div>
       <div class="price">${cost}₾</div>
       <div class="balance">ბალანსი: <b style="color:#fbbf24">${player.money}₾</b></div>
@@ -1345,17 +1345,16 @@ function showRentOrBuyoutModal(tile, player, owner, rent, buyout, canBuyout){
     modalCard.className = 'mcard';
     modalCard.innerHTML = `
       <h2>${tile.name}</h2>
-      <div class="cat">${owner.name}-ის ქონება</div>
+      <div class="cat">ეკუთვნის: <b style="color:${owner.color}">${owner.name}</b>-ს</div>
       ${tile.color ? `<div class="color-bar" style="background:${tile.color};color:${tile.color}"></div>` : `<div class="icon-big">${tile.icon||'🏠'}</div>`}
-      <div style="font-size:14px;color:#cbd5e1;margin:10px 0">
-        გადასახდელი ქირა: <b style="color:#ef4444;font-size:20px">${rent}₾</b>
+      <div class="rent-row">
+        <div class="lbl">გადასახდელი ქირა</div>
+        <div class="val" style="color:#ef4444">${rent}₾</div>
       </div>
-      <div class="balance">შენი ბალანსი: <b style="color:#fbbf24">${player.money}₾</b></div>
-      <div class="actions" style="flex-direction:column;gap:8px">
+      <div class="balance" style="margin-top:10px">შენი ბალანსი: <b style="color:#fbbf24">${player.money}₾</b></div>
+      <div class="actions">
         <button class="btn red" id="payRentB">გადაიხადე ქირა (${rent}₾)</button>
-        <button class="btn orange" id="buyoutB" ${!canBuyout?'disabled':''}>
-          გამოისყიდე ქონება (${buyout}₾)
-        </button>
+        ${canBuyout ? `<button class="btn orange" id="buyoutB">გამოისყიდე (${buyout}₾)</button>` : ''}
       </div>
     `;
     modal.classList.remove('hidden');
@@ -1372,9 +1371,9 @@ function showCardModal(kind, text){
     modalCard.innerHTML = `
       <h2>${kind==='chance'?'❓ შანსი':'📦 საზოგადოებრივი ყუთი'}</h2>
       <div class="icon-big">${kind==='chance'?'❓':'📦'}</div>
-      <p style="font-size:18px;font-weight:700;margin:16px 0">${text}</p>
+      <p style="font-size:16px;font-weight:700;margin:16px 0">${text}</p>
       <div class="actions">
-        <button class="btn green" id="cardOkB">კარგი</button>
+        <button class="btn green" id="cardOkB">გასაგებია</button>
       </div>
     `;
     modal.classList.remove('hidden');
@@ -1385,10 +1384,10 @@ function showCardModal(kind, text){
 function showGameOver(winner){
   modalCard.className = 'mcard gameover';
   modalCard.innerHTML = `
-    <h2>🎉 თამაში დასრულდა!</h2>
-    <div class="icon-big">🏆</div>
-    <p style="font-size:20px;font-weight:900;color:#c4b5fd">${winner ? winner.name : 'არავინ'} გაიმარჯვა!</p>
-    <div class="actions">
+    <h2>🏆 თამაში დასრულდა!</h2>
+    <div class="icon-big">👑</div>
+    <p style="font-size:18px;font-weight:800;color:#c4b5fd">${winner ? winner.name : 'არავინ'} გაიმარჯვა!</p>
+    <div class="actions" style="margin-top:20px">
       <button class="btn green" onclick="location.reload()">ახალი თამაში</button>
     </div>
   `;

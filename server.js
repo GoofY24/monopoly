@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -12,31 +13,25 @@ const io = new Server(server, {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const rooms = {};
 const PALETTE = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b'];
-const GAME_DURATION = 20 * 60; // 20 წუთი (წამებში)
+const GAME_DURATION = 20 * 60;
+const GRACE_PERIOD = 90 * 1000; // 90 წამი დაბრუნებისთვის
 
-function startRoomTimer(roomId, room) {
-  if (room.timerHandle) clearInterval(room.timerHandle);
-  room.timeLeft = GAME_DURATION;
-  io.to(roomId).emit('timer_tick', { timeLeft: room.timeLeft });
+function safePlayers(room) {
+  return room.players.map(p => ({
+    id: p.id,
+    username: p.username,
+    color: p.color,
+    isHost: p.isHost,
+    connected: p.connected !== false
+  }));
+}
 
-  room.timerHandle = setInterval(() => {
-    const r = rooms[roomId];
-    if (!r) { clearInterval(room.timerHandle); return; }
-    r.timeLeft--;
-    io.to(roomId).emit('timer_tick', { timeLeft: r.timeLeft });
-    if (r.timeLeft <= 0) {
-      clearInterval(r.timerHandle);
-      r.timerHandle = null;
-      io.to(roomId).emit('time_up', {});
-    }
-  }, 1000);
+function connectedCount(room) {
+  return room.players.filter(p => p.connected !== false).length;
 }
 
 function stopRoomTimer(room) {
@@ -46,9 +41,24 @@ function stopRoomTimer(room) {
   }
 }
 
+function startRoomTimer(roomId, room) {
+  stopRoomTimer(room);
+  io.to(roomId).emit('timer_tick', { timeLeft: room.timeLeft });
+  room.timerHandle = setInterval(() => {
+    const r = rooms[roomId];
+    if (!r) { return; }
+    r.timeLeft--;
+    io.to(roomId).emit('timer_tick', { timeLeft: r.timeLeft });
+    if (r.timeLeft <= 0) {
+      stopRoomTimer(r);
+      io.to(roomId).emit('time_up', {});
+    }
+  }, 1000);
+}
+
 io.on('connection', (socket) => {
 
-  // 1. ოთახის შექმნა ან შეერთება
+  /* ============ JOIN LOBBY ============ */
   socket.on('join_lobby', ({ roomId, username, color }) => {
     socket.join(roomId);
 
@@ -64,38 +74,50 @@ io.on('connection', (socket) => {
     }
 
     const room = rooms[roomId];
+    const existingPlayer = room.players.find(p => p.id === socket.id && p.connected !== false);
 
-    const existingPlayer = room.players.find(p => p.id === socket.id);
     if (!existingPlayer) {
-      const usedColors = room.players.map(p => p.color);
+      if (room.gameStarted && connectedCount(room) >= 2) {
+        socket.emit('error_message', 'ოთახი სავსეა');
+        return;
+      }
+
+      const usedColors = room.players.filter(p => p.connected !== false).map(p => p.color);
       let chosen = color;
       if (!chosen || usedColors.includes(chosen)) {
         chosen = PALETTE.find(c => !usedColors.includes(c)) || '#64748b';
       }
+
+      const token = crypto.randomBytes(16).toString('hex');
       room.players.push({
         id: socket.id,
+        token,
         username: username || `Player_${socket.id.substring(0, 4)}`,
         color: chosen,
-        isHost: room.players.length === 0
+        isHost: room.players.length === 0,
+        connected: true,
+        disconnectTimer: null
       });
+
+      socket.data.roomId = roomId;
+      socket.data.token = token;
+      socket.emit('welcome', { token, roomId });
     }
 
-    const safePlayers = room.players.map(p => ({
-      id: p.id, username: p.username, color: p.color, isHost: p.isHost
-    }));
+    io.to(roomId).emit('update_lobby', safePlayers(room));
 
-    io.to(roomId).emit('update_lobby', safePlayers);
-
-    // აუტო-სტარტი 2 მოთამაშეზე
-    if (room.players.length === 2 && !room.gameStarted) {
+    if (connectedCount(room) === 2 && !room.gameStarted) {
       room.gameStarted = true;
       room.currentTurnIndex = 0;
+      room.timeLeft = GAME_DURATION;
+
+      const orderedPlayers = room.players.map(x => ({
+        id: x.id, username: x.username, color: x.color
+      }));
 
       room.players.forEach((p, idx) => {
         io.to(p.id).emit('game_started', {
-          players: room.players.map(x => ({
-            id: x.id, username: x.username, color: x.color
-          })),
+          players: orderedPlayers,
           myIndex: idx,
           currentTurnIndex: room.currentTurnIndex,
           timeLeft: GAME_DURATION
@@ -106,62 +128,71 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 2. ხელით დაწყება (სარეზერვო)
-  socket.on('start_game', (roomId) => {
+  /* ============ REJOIN (refresh / reconnect) ============ */
+  socket.on('rejoin', ({ roomId, token }) => {
     const room = rooms[roomId];
-    if (!room || room.gameStarted) return;
+    if (!room) { socket.emit('rejoin_failed', { reason: 'no_room' }); return; }
 
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player || !player.isHost) {
-      socket.emit('error_message', 'თამაშის დაწყება მხოლოდ ჰოსტს შეუძლია!');
-      return;
+    const idx = room.players.findIndex(p => p.token === token);
+    if (idx === -1) { socket.emit('rejoin_failed', { reason: 'no_player' }); return; }
+
+    const player = room.players[idx];
+    if (player.disconnectTimer) {
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = null;
     }
-    if (room.players.length < 2) {
-      socket.emit('error_message', 'თამაშის დასაწყებად საჭიროა მინიმუმ 2 მოთამაშე!');
-      return;
-    }
+    player.id = socket.id;
+    player.connected = true;
 
-    room.gameStarted = true;
-    room.currentTurnIndex = 0;
+    socket.join(roomId);
+    socket.data.roomId = roomId;
+    socket.data.token = token;
 
-    room.players.forEach((p, idx) => {
-      io.to(p.id).emit('game_started', {
-        players: room.players.map(x => ({
-          id: x.id, username: x.username, color: x.color
-        })),
-        myIndex: idx,
-        currentTurnIndex: room.currentTurnIndex,
-        timeLeft: GAME_DURATION
-      });
+    socket.emit('rejoin_success', {
+      roomId,
+      myIndex: idx,
+      gameStarted: room.gameStarted,
+      players: room.players.map(p => ({
+        id: p.id, username: p.username, color: p.color
+      })),
+      state: room.state,
+      timeLeft: room.timeLeft,
+      currentTurnIndex: room.currentTurnIndex
     });
 
-    startRoomTimer(roomId, room);
+    socket.to(roomId).emit('opponent_reconnected', {
+      username: player.username,
+      players: safePlayers(room)
+    });
+
+    if (room.gameStarted && connectedCount(room) >= 2 && room.timeLeft > 0) {
+      startRoomTimer(roomId, room);
+    }
+
+    io.to(roomId).emit('update_lobby', safePlayers(room));
   });
 
-  // 3. STATE RELAY - სინქრონიზაცია
+  /* ============ STATE SYNC ============ */
   socket.on('game_sync', ({ roomId, state }) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted) return;
     room.state = state;
     socket.to(roomId).emit('game_sync', { state });
-
-    // თუ თამაში დასრულდა — გავაჩეროთ ტაიმერი
     if (state && state.gameOver) {
       stopRoomTimer(room);
     }
   });
 
-  // 4. კამათლის ანიმაციის სინქრონიზაცია
   socket.on('dice_roll', ({ roomId, d1, d2 }) => {
     socket.to(roomId).emit('dice_roll', { d1, d2 });
   });
 
-  // 5. სვლის დასრულება
   socket.on('end_turn', (roomId) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted) return;
-
-    if (socket.id === room.players[room.currentTurnIndex].id) {
+    const cur = room.players[room.currentTurnIndex];
+    if (!cur) return;
+    if (socket.id === cur.id) {
       room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length;
       io.to(roomId).emit('turn_changed', {
         currentTurn: room.players[room.currentTurnIndex].id
@@ -169,15 +200,18 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 6. კავშირის გაწყვეტა
+  /* ============ DISCONNECT ============ */
   socket.on('disconnecting', () => {
     for (const roomId of socket.rooms) {
+      if (roomId === socket.id) continue;
       const room = rooms[roomId];
       if (!room) continue;
 
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex === -1) continue;
+      const player = room.players[playerIndex];
 
+      // Lobby — წაშალე დაუყოვნებლივ
       if (!room.gameStarted) {
         room.players.splice(playerIndex, 1);
         if (room.players.length === 0) {
@@ -185,46 +219,47 @@ io.on('connection', (socket) => {
           delete rooms[roomId];
         } else {
           room.players[0].isHost = true;
-          io.to(roomId).emit('update_lobby', room.players.map(p => ({
-            id: p.id, username: p.username, color: p.color, isHost: p.isHost
-          })));
+          io.to(roomId).emit('update_lobby', safePlayers(room));
         }
         continue;
       }
 
-      const isCurrentTurnPlayer = (room.currentTurnIndex === playerIndex);
-      room.players.splice(playerIndex, 1);
+      // თამაში მიმდინარეობს — არ ვშლით, ვნიშნავთ როგორც გათიშულს
+      player.connected = false;
+      player.id = null;
+
+      io.to(roomId).emit('opponent_disconnected', {
+        username: player.username,
+        players: safePlayers(room)
+      });
+
+      // ტაიმერის შეჩერება
       stopRoomTimer(room);
 
-      if (room.players.length === 0) {
-        delete rooms[roomId];
-        continue;
-      }
+      player.disconnectTimer = setTimeout(() => {
+        const r = rooms[roomId];
+        if (!r) return;
+        const i = r.players.findIndex(p => p.token === player.token);
+        if (i === -1) return;
+        if (r.players[i].connected) return;
 
-      if (room.players.length === 1) {
-        io.to(roomId).emit('game_over', {
-          winner: room.players[0],
-          reason: 'all_opponents_disconnected'
-        });
-        delete rooms[roomId];
-        continue;
-      }
+        // Grace პერიოდი ამოიწურა
+        r.players.splice(i, 1);
+        stopRoomTimer(r);
 
-      if (playerIndex < room.currentTurnIndex) room.currentTurnIndex--;
-      if (room.currentTurnIndex >= room.players.length) room.currentTurnIndex = 0;
+        if (r.players.length === 0) {
+          delete rooms[roomId];
+          return;
+        }
 
-      if (isCurrentTurnPlayer) {
-        io.to(roomId).emit('turn_changed', {
-          currentTurn: room.players[room.currentTurnIndex].id
-        });
-      }
-
-      io.to(roomId).emit('player_left', {
-        players: room.players.map(p => ({
-          id: p.id, username: p.username, color: p.color
-        })),
-        disconnectedId: socket.id
-      });
+        if (r.players.length === 1) {
+          io.to(roomId).emit('game_over', {
+            winner: { username: r.players[0].username },
+            reason: 'all_opponents_disconnected'
+          });
+          delete rooms[roomId];
+        }
+      }, GRACE_PERIOD);
     }
   });
 });

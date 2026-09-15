@@ -47,20 +47,33 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('update_lobby', rooms[roomId].players);
   });
 
-  // 2. თამაშის დაწყება (მხოლოდ ჰოსტს შეუძლია)
+  // 2. თამაშის დაწყება (მხოლოდ ჰოსტს შეუძლია + მინიმუმ 2 მოთამაშე)
   socket.on('start_game', (roomId) => {
     const room = rooms[roomId];
 
-    if (room && !room.gameStarted) {
-      room.gameStarted = true;
-      room.currentTurnIndex = 0; // იწყებს პირველი მოთამაშე
+    if (!room || room.gameStarted) return;
 
-      // ვაგზავნით სიგნალს თამაშის დაწყებაზე + საწყის სვლას
-      io.to(roomId).emit('game_started', {
-        players: room.players,
-        currentTurn: room.players[room.currentTurnIndex].id
-      });
+    // ვამოწმებთ, არის თუ არა მოთხოვნის გამომგზავნი ჰოსტი
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      socket.emit('error_message', 'თამაშის დაწყება მხოლოდ ჰოსტს შეუძლია!');
+      return;
     }
+
+    // ვამოწმებთ მოთამაშეთა რაოდენობას
+    if (room.players.length < 2) {
+      socket.emit('error_message', 'თამაშის დასაწყებად საჭიროა მინიმუმ 2 მოთამაშე!');
+      return;
+    }
+
+    // თუ შემოწმებები გაიარა, ვიწყებთ თამაშს
+    room.gameStarted = true;
+    room.currentTurnIndex = 0; // იწყებს პირველი მოთამაშე
+
+    io.to(roomId).emit('game_started', {
+      players: room.players,
+      currentTurn: room.players[room.currentTurnIndex].id
+    });
   });
 
   // 3. სვლის დასრულება/გადაცემა
